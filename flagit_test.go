@@ -86,8 +86,8 @@ func TestValidateStruct(t *testing.T) {
 }
 
 func TestIsTypeSupported(t *testing.T) {
-	service1URL, _ := url.Parse("service-1:8080")
-	service2URL, _ := url.Parse("service-2:8080")
+	url1, _ := url.Parse("service-1:8080")
+	url2, _ := url.Parse("service-2:8080")
 
 	tests := []struct {
 		name     string
@@ -109,7 +109,7 @@ func TestIsTypeSupported(t *testing.T) {
 		{"Uint16", uint16(65535), true},
 		{"Uint32", uint32(4294967295), true},
 		{"Uint64", uint64(18446744073709551615), true},
-		{"URL", *service1URL, true},
+		{"URL", *url1, true},
 		{"StringSlice", []string{"foo", "bar"}, true},
 		{"BoolSlice", []bool{true, false}, true},
 		{"Float32Slice", []float32{3.1415, 2.7182}, true},
@@ -125,7 +125,7 @@ func TestIsTypeSupported(t *testing.T) {
 		{"Uint16Slice", []uint16{}, true},
 		{"Uint32Slice", []uint32{}, true},
 		{"Uint64Slice", []uint64{}, true},
-		{"URLSlice", []url.URL{*service1URL, *service2URL}, true},
+		{"URLSlice", []url.URL{*url1, *url2}, true},
 		{"Unsupported", time.Now(), false},
 	}
 
@@ -184,6 +184,263 @@ func TestGetFlagValue(t *testing.T) {
 		flagValue := getFlagValue(tc.flagName)
 
 		assert.Equal(t, tc.expectedFlagValue, flagValue)
+	}
+}
+
+func TestSetFieldValue(t *testing.T) {
+	d90m := 90 * time.Minute
+	d120m := 120 * time.Minute
+	d4h := 4 * time.Hour
+	d8h := 8 * time.Hour
+
+	url1, _ := url.Parse("service-1:8080")
+	url2, _ := url.Parse("service-2:8080")
+	url3, _ := url.Parse("service-3:8080")
+	url4, _ := url.Parse("service-4:8080")
+
+	tests := []struct {
+		name           string
+		s              *flags
+		values         map[string]string
+		expectedResult bool
+		expected       *flags
+	}{
+		{
+			"NewValues",
+			&flags{
+				String:        "default",
+				Bool:          false,
+				Float32:       3.1415,
+				Float64:       3.14159265359,
+				Int:           -2147483648,
+				Int8:          -128,
+				Int16:         -32768,
+				Int32:         -2147483648,
+				Int64:         -9223372036854775808,
+				Uint:          4294967295,
+				Uint8:         255,
+				Uint16:        65535,
+				Uint32:        4294967295,
+				Uint64:        18446744073709551615,
+				Duration:      d90m,
+				URL:           *url1,
+				StringSlice:   []string{"milad", "mona"},
+				BoolSlice:     []bool{false, true},
+				Float32Slice:  []float32{3.1415, 2.7182},
+				Float64Slice:  []float64{3.14159265359, 2.71828182845},
+				IntSlice:      []int{-2147483648, 2147483647},
+				Int8Slice:     []int8{-128, 127},
+				Int16Slice:    []int16{-32768, 32767},
+				Int32Slice:    []int32{-2147483648, 2147483647},
+				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
+				UintSlice:     []uint{0, 4294967295},
+				Uint8Slice:    []uint8{0, 255},
+				Uint16Slice:   []uint16{0, 65535},
+				Uint32Slice:   []uint32{0, 4294967295},
+				Uint64Slice:   []uint64{0, 18446744073709551615},
+				DurationSlice: []time.Duration{d90m, d120m},
+				URLSlice:      []url.URL{*url1, *url2},
+			},
+			map[string]string{
+				"String":        "content",
+				"Bool":          "true",
+				"Float32":       "2.7182",
+				"Float64":       "2.7182818284",
+				"Int":           "2147483647",
+				"Int8":          "127",
+				"Int16":         "32767",
+				"Int32":         "2147483647",
+				"Int64":         "9223372036854775807",
+				"Uint":          "2147483648",
+				"Uint8":         "128",
+				"Uint16":        "32768",
+				"Uint32":        "2147483648",
+				"Uint64":        "9223372036854775808",
+				"Duration":      "4h",
+				"URL":           "service-3:8080",
+				"StringSlice":   "mona,milad",
+				"BoolSlice":     "true,false",
+				"Float32Slice":  "2.7182,3.1415",
+				"Float64Slice":  "2.71828182845,3.14159265359",
+				"IntSlice":      "2147483647,-2147483648",
+				"Int8Slice":     "127,-128",
+				"Int16Slice":    "32767,-32768",
+				"Int32Slice":    "2147483647,-2147483648",
+				"Int64Slice":    "9223372036854775807,-9223372036854775808",
+				"UintSlice":     "4294967295,0",
+				"Uint8Slice":    "255,0",
+				"Uint16Slice":   "65535,0",
+				"Uint32Slice":   "4294967295,0",
+				"Uint64Slice":   "18446744073709551615,0",
+				"DurationSlice": "4h,8h",
+				"URLSlice":      "service-3:8080,service-4:8080",
+			},
+			true,
+			&flags{
+				String:        "content",
+				Bool:          true,
+				Float32:       2.7182,
+				Float64:       2.7182818284,
+				Int:           2147483647,
+				Int8:          127,
+				Int16:         32767,
+				Int32:         2147483647,
+				Int64:         9223372036854775807,
+				Uint:          2147483648,
+				Uint8:         128,
+				Uint16:        32768,
+				Uint32:        2147483648,
+				Uint64:        9223372036854775808,
+				Duration:      d4h,
+				URL:           *url3,
+				StringSlice:   []string{"mona", "milad"},
+				BoolSlice:     []bool{true, false},
+				Float32Slice:  []float32{2.7182, 3.1415},
+				Float64Slice:  []float64{2.71828182845, 3.14159265359},
+				IntSlice:      []int{2147483647, -2147483648},
+				Int8Slice:     []int8{127, -128},
+				Int16Slice:    []int16{32767, -32768},
+				Int32Slice:    []int32{2147483647, -2147483648},
+				Int64Slice:    []int64{9223372036854775807, -9223372036854775808},
+				UintSlice:     []uint{4294967295, 0},
+				Uint8Slice:    []uint8{255, 0},
+				Uint16Slice:   []uint16{65535, 0},
+				Uint32Slice:   []uint32{4294967295, 0},
+				Uint64Slice:   []uint64{18446744073709551615, 0},
+				DurationSlice: []time.Duration{d4h, d8h},
+				URLSlice:      []url.URL{*url3, *url4},
+			},
+		},
+		{
+			"NoNewValues",
+			&flags{
+				String:        "content",
+				Bool:          true,
+				Float32:       2.7182,
+				Float64:       2.7182818284,
+				Int:           2147483647,
+				Int8:          127,
+				Int16:         32767,
+				Int32:         2147483647,
+				Int64:         9223372036854775807,
+				Uint:          2147483648,
+				Uint8:         128,
+				Uint16:        32768,
+				Uint32:        2147483648,
+				Uint64:        9223372036854775808,
+				Duration:      d4h,
+				URL:           *url3,
+				StringSlice:   []string{"mona", "milad"},
+				BoolSlice:     []bool{true, false},
+				Float32Slice:  []float32{2.7182, 3.1415},
+				Float64Slice:  []float64{2.71828182845, 3.14159265359},
+				IntSlice:      []int{2147483647, -2147483648},
+				Int8Slice:     []int8{127, -128},
+				Int16Slice:    []int16{32767, -32768},
+				Int32Slice:    []int32{2147483647, -2147483648},
+				Int64Slice:    []int64{9223372036854775807, -9223372036854775808},
+				UintSlice:     []uint{4294967295, 0},
+				Uint8Slice:    []uint8{255, 0},
+				Uint16Slice:   []uint16{65535, 0},
+				Uint32Slice:   []uint32{4294967295, 0},
+				Uint64Slice:   []uint64{18446744073709551615, 0},
+				DurationSlice: []time.Duration{d4h, d8h},
+				URLSlice:      []url.URL{*url3, *url4},
+			},
+			map[string]string{
+				"String":        "content",
+				"Bool":          "true",
+				"Float32":       "2.7182",
+				"Float64":       "2.7182818284",
+				"Int":           "2147483647",
+				"Int8":          "127",
+				"Int16":         "32767",
+				"Int32":         "2147483647",
+				"Int64":         "9223372036854775807",
+				"Uint":          "2147483648",
+				"Uint8":         "128",
+				"Uint16":        "32768",
+				"Uint32":        "2147483648",
+				"Uint64":        "9223372036854775808",
+				"Duration":      "4h",
+				"URL":           "service-3:8080",
+				"StringSlice":   "mona,milad",
+				"BoolSlice":     "true,false",
+				"Float32Slice":  "2.7182,3.1415",
+				"Float64Slice":  "2.71828182845,3.14159265359",
+				"IntSlice":      "2147483647,-2147483648",
+				"Int8Slice":     "127,-128",
+				"Int16Slice":    "32767,-32768",
+				"Int32Slice":    "2147483647,-2147483648",
+				"Int64Slice":    "9223372036854775807,-9223372036854775808",
+				"UintSlice":     "4294967295,0",
+				"Uint8Slice":    "255,0",
+				"Uint16Slice":   "65535,0",
+				"Uint32Slice":   "4294967295,0",
+				"Uint64Slice":   "18446744073709551615,0",
+				"DurationSlice": "4h,8h",
+				"URLSlice":      "service-3:8080,service-4:8080",
+			},
+			false,
+			&flags{
+				String:        "content",
+				Bool:          true,
+				Float32:       2.7182,
+				Float64:       2.7182818284,
+				Int:           2147483647,
+				Int8:          127,
+				Int16:         32767,
+				Int32:         2147483647,
+				Int64:         9223372036854775807,
+				Uint:          2147483648,
+				Uint8:         128,
+				Uint16:        32768,
+				Uint32:        2147483648,
+				Uint64:        9223372036854775808,
+				Duration:      d4h,
+				URL:           *url3,
+				StringSlice:   []string{"mona", "milad"},
+				BoolSlice:     []bool{true, false},
+				Float32Slice:  []float32{2.7182, 3.1415},
+				Float64Slice:  []float64{2.71828182845, 3.14159265359},
+				IntSlice:      []int{2147483647, -2147483648},
+				Int8Slice:     []int8{127, -128},
+				Int16Slice:    []int16{32767, -32768},
+				Int32Slice:    []int32{2147483647, -2147483648},
+				Int64Slice:    []int64{9223372036854775807, -9223372036854775808},
+				UintSlice:     []uint{4294967295, 0},
+				Uint8Slice:    []uint8{255, 0},
+				Uint16Slice:   []uint16{65535, 0},
+				Uint32Slice:   []uint32{4294967295, 0},
+				Uint64Slice:   []uint64{18446744073709551615, 0},
+				DurationSlice: []time.Duration{d4h, d8h},
+				URLSlice:      []url.URL{*url3, *url4},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			vStruct := reflect.ValueOf(tc.s).Elem()
+			for i := 0; i < vStruct.NumField(); i++ {
+				v := vStruct.Field(i)
+				f := vStruct.Type().Field(i)
+
+				// Only consider exported and supported fields
+				if v.CanSet() && isTypeSupported(v.Type()) {
+					f := fieldInfo{
+						v:       v,
+						name:    f.Name,
+						listSep: ",",
+					}
+
+					res := setFieldValue(f, tc.values[f.name])
+					assert.Equal(t, tc.expectedResult, res)
+				}
+			}
+
+			assert.Equal(t, tc.expected, tc.s)
+		})
 	}
 }
 
