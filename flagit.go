@@ -1,17 +1,16 @@
 // Package flagit TODO:
+// TODO: support nested fields
 // TODO: Decide how to handle errors
 package flagit
 
 import (
 	"errors"
 	"flag"
-	"net/url"
+	"fmt"
 	"os"
 	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
-	"time"
 )
 
 const (
@@ -20,9 +19,21 @@ const (
 )
 
 type fieldInfo struct {
-	v       reflect.Value
-	name    string
-	listSep string
+	v    reflect.Value
+	name string
+	flag string
+	sep  string
+}
+
+// flagValue implements the flag.Value interface.
+type flagValue struct{}
+
+func (v *flagValue) String() string {
+	return ""
+}
+
+func (v *flagValue) Set(string) error {
+	return nil
 }
 
 func validateStruct(s interface{}) (reflect.Value, error) {
@@ -92,438 +103,6 @@ func getFlagValue(flagName string) string {
 	return ""
 }
 
-func setString(v reflect.Value, val string) bool {
-	if v.String() != val {
-		v.SetString(val)
-		return true
-	}
-
-	return false
-}
-
-func setBool(v reflect.Value, val string) bool {
-	if b, err := strconv.ParseBool(val); err == nil {
-		if v.Bool() != b {
-			v.SetBool(b)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setFloat32(v reflect.Value, val string) bool {
-	if f, err := strconv.ParseFloat(val, 32); err == nil {
-		if v.Float() != f {
-			v.SetFloat(f)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setFloat64(v reflect.Value, val string) bool {
-	if f, err := strconv.ParseFloat(val, 64); err == nil {
-		if v.Float() != f {
-			v.SetFloat(f)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setInt(v reflect.Value, val string) bool {
-	// int size and range are platform-dependent
-	if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-		if v.Int() != i {
-			v.SetInt(i)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setInt8(v reflect.Value, val string) bool {
-	if i, err := strconv.ParseInt(val, 10, 8); err == nil {
-		if v.Int() != i {
-			v.SetInt(i)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setInt16(v reflect.Value, val string) bool {
-	if i, err := strconv.ParseInt(val, 10, 16); err == nil {
-		if v.Int() != i {
-			v.SetInt(i)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setInt32(v reflect.Value, val string) bool {
-	if i, err := strconv.ParseInt(val, 10, 32); err == nil {
-		if v.Int() != i {
-			v.SetInt(i)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setInt64(v reflect.Value, val string) bool {
-	if t := v.Type(); t.PkgPath() == "time" && t.Name() == "Duration" {
-		// time.Duration
-		if d, err := time.ParseDuration(val); err == nil {
-			if v.Interface() != d {
-				v.Set(reflect.ValueOf(d))
-				return true
-			}
-		}
-	} else if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-		if v.Int() != i {
-			v.SetInt(i)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setUint(v reflect.Value, val string) bool {
-	// uint size and range are platform-dependent
-	if u, err := strconv.ParseUint(val, 10, 64); err == nil {
-		if v.Uint() != u {
-			v.SetUint(u)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setUint8(v reflect.Value, val string) bool {
-	if u, err := strconv.ParseUint(val, 10, 8); err == nil {
-		if v.Uint() != u {
-			v.SetUint(u)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setUint16(v reflect.Value, val string) bool {
-	if u, err := strconv.ParseUint(val, 10, 16); err == nil {
-		if v.Uint() != u {
-			v.SetUint(u)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setUint32(v reflect.Value, val string) bool {
-	if u, err := strconv.ParseUint(val, 10, 32); err == nil {
-		if v.Uint() != u {
-			v.SetUint(u)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setUint64(v reflect.Value, val string) bool {
-	if u, err := strconv.ParseUint(val, 10, 64); err == nil {
-		if v.Uint() != u {
-			v.SetUint(u)
-			return true
-		}
-	}
-
-	return false
-}
-
-func setStruct(v reflect.Value, val string) bool {
-	if t := v.Type(); t.PkgPath() == "net/url" && t.Name() == "URL" {
-		// url.URL
-		if u, err := url.Parse(val); err == nil {
-			// u is a pointer
-			if !reflect.DeepEqual(v.Interface(), *u) {
-				v.Set(reflect.ValueOf(u).Elem())
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func setStringSlice(v reflect.Value, vals []string) bool {
-	if !reflect.DeepEqual(v.Interface(), vals) {
-		v.Set(reflect.ValueOf(vals))
-		return true
-	}
-
-	return false
-}
-
-func setBoolSlice(v reflect.Value, vals []string) bool {
-	bools := []bool{}
-	for _, val := range vals {
-		if b, err := strconv.ParseBool(val); err == nil {
-			bools = append(bools, b)
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), bools) {
-		v.Set(reflect.ValueOf(bools))
-		return true
-	}
-
-	return false
-}
-
-func setFloat32Slice(v reflect.Value, vals []string) bool {
-	floats := []float32{}
-	for _, val := range vals {
-		if f, err := strconv.ParseFloat(val, 32); err == nil {
-			floats = append(floats, float32(f))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), floats) {
-		v.Set(reflect.ValueOf(floats))
-		return true
-	}
-
-	return false
-}
-
-func setFloat64Slice(v reflect.Value, vals []string) bool {
-	floats := []float64{}
-	for _, val := range vals {
-		if f, err := strconv.ParseFloat(val, 64); err == nil {
-			floats = append(floats, f)
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), floats) {
-		v.Set(reflect.ValueOf(floats))
-		return true
-	}
-
-	return false
-}
-
-func setIntSlice(v reflect.Value, vals []string) bool {
-	// int size and range are platform-dependent
-	ints := []int{}
-	for _, val := range vals {
-		if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-			ints = append(ints, int(i))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), ints) {
-		v.Set(reflect.ValueOf(ints))
-		return true
-	}
-
-	return false
-}
-
-func setInt8Slice(v reflect.Value, vals []string) bool {
-	ints := []int8{}
-	for _, val := range vals {
-		if i, err := strconv.ParseInt(val, 10, 8); err == nil {
-			ints = append(ints, int8(i))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), ints) {
-		v.Set(reflect.ValueOf(ints))
-		return true
-	}
-
-	return false
-}
-
-func setInt16Slice(v reflect.Value, vals []string) bool {
-	ints := []int16{}
-	for _, val := range vals {
-		if i, err := strconv.ParseInt(val, 10, 16); err == nil {
-			ints = append(ints, int16(i))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), ints) {
-		v.Set(reflect.ValueOf(ints))
-		return true
-	}
-
-	return false
-}
-
-func setInt32Slice(v reflect.Value, vals []string) bool {
-	ints := []int32{}
-	for _, val := range vals {
-		if i, err := strconv.ParseInt(val, 10, 32); err == nil {
-			ints = append(ints, int32(i))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), ints) {
-		v.Set(reflect.ValueOf(ints))
-		return true
-	}
-
-	return false
-}
-
-func setInt64Slice(v reflect.Value, vals []string) bool {
-	if t := reflect.TypeOf(v.Interface()).Elem(); t.PkgPath() == "time" && t.Name() == "Duration" {
-		durations := []time.Duration{}
-		for _, val := range vals {
-			if d, err := time.ParseDuration(val); err == nil {
-				durations = append(durations, d)
-			}
-		}
-
-		// []time.Duration
-		if !reflect.DeepEqual(v.Interface(), durations) {
-			v.Set(reflect.ValueOf(durations))
-			return true
-		}
-	} else {
-		ints := []int64{}
-		for _, val := range vals {
-			if i, err := strconv.ParseInt(val, 10, 64); err == nil {
-				ints = append(ints, i)
-			}
-		}
-
-		if !reflect.DeepEqual(v.Interface(), ints) {
-			v.Set(reflect.ValueOf(ints))
-			return true
-		}
-	}
-
-	return false
-}
-
-func setUintSlice(v reflect.Value, vals []string) bool {
-	// uint size and range are platform-dependent
-	uints := []uint{}
-	for _, val := range vals {
-		if u, err := strconv.ParseUint(val, 10, 64); err == nil {
-			uints = append(uints, uint(u))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), uints) {
-		v.Set(reflect.ValueOf(uints))
-		return true
-	}
-
-	return false
-}
-
-func setUint8Slice(v reflect.Value, vals []string) bool {
-	uints := []uint8{}
-	for _, val := range vals {
-		if u, err := strconv.ParseUint(val, 10, 8); err == nil {
-			uints = append(uints, uint8(u))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), uints) {
-		v.Set(reflect.ValueOf(uints))
-		return true
-	}
-
-	return false
-}
-
-func setUint16Slice(v reflect.Value, vals []string) bool {
-	uints := []uint16{}
-	for _, val := range vals {
-		if u, err := strconv.ParseUint(val, 10, 16); err == nil {
-			uints = append(uints, uint16(u))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), uints) {
-		v.Set(reflect.ValueOf(uints))
-		return true
-	}
-
-	return false
-}
-
-func setUint32Slice(v reflect.Value, vals []string) bool {
-	uints := []uint32{}
-	for _, val := range vals {
-		if u, err := strconv.ParseUint(val, 10, 32); err == nil {
-			uints = append(uints, uint32(u))
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), uints) {
-		v.Set(reflect.ValueOf(uints))
-		return true
-	}
-
-	return false
-}
-
-func setUint64Slice(v reflect.Value, vals []string) bool {
-	uints := []uint64{}
-	for _, val := range vals {
-		if u, err := strconv.ParseUint(val, 10, 64); err == nil {
-			uints = append(uints, u)
-		}
-	}
-
-	if !reflect.DeepEqual(v.Interface(), uints) {
-		v.Set(reflect.ValueOf(uints))
-		return true
-	}
-
-	return false
-}
-
-func setURLSlice(v reflect.Value, vals []string) bool {
-	t := reflect.TypeOf(v.Interface()).Elem()
-
-	if t.PkgPath() == "net/url" && t.Name() == "URL" {
-		urls := []url.URL{}
-		for _, val := range vals {
-			if u, err := url.Parse(val); err == nil {
-				urls = append(urls, *u)
-			}
-		}
-
-		// []url.URL
-		if !reflect.DeepEqual(v.Interface(), urls) {
-			v.Set(reflect.ValueOf(urls))
-			return true
-		}
-	}
-
-	return false
-}
-
 func setFieldValue(f fieldInfo, val string) bool {
 	switch f.v.Kind() {
 	case reflect.String:
@@ -559,7 +138,7 @@ func setFieldValue(f fieldInfo, val string) bool {
 
 	case reflect.Slice:
 		tSlice := reflect.TypeOf(f.v.Interface()).Elem()
-		vals := strings.Split(val, f.listSep)
+		vals := strings.Split(val, f.sep)
 
 		switch tSlice.Kind() {
 		case reflect.String:
@@ -598,7 +177,7 @@ func setFieldValue(f fieldInfo, val string) bool {
 	return false
 }
 
-func iterateOnFields(vStruct reflect.Value, handle func(v reflect.Value, fieldName, flagName, listSep string)) {
+func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo)) {
 	// Iterate over struct fields
 	for i := 0; i < vStruct.NumField(); i++ {
 		v := vStruct.Field(i)        // reflect.Value --> vField.Kind(), vField.Type().Name(), vField.Type().Kind(), vField.Interface()
@@ -611,6 +190,9 @@ func iterateOnFields(vStruct reflect.Value, handle func(v reflect.Value, fieldNa
 
 		// `flag:"..."`
 		flagName := f.Tag.Get(flagTag)
+		if flagName == "" {
+			continue
+		}
 
 		// `sep:"..."`
 		listSep := f.Tag.Get(sepTag)
@@ -618,21 +200,85 @@ func iterateOnFields(vStruct reflect.Value, handle func(v reflect.Value, fieldNa
 			listSep = ","
 		}
 
-		handle(v, f.Name, flagName, listSep)
+		handle(fieldInfo{
+			v:    v,
+			name: f.Name,
+			flag: flagName,
+			sep:  listSep,
+		})
 	}
 }
 
-// Populate TODO:
+// Populate accepts the pointer to a struct type.
+// For those struct fields that have the flag tag, it will read values from command-line flags and parse them to the appropriate types.
+// This method does not use the built-in flag package for parsing and reading the flags.
 func Populate(s interface{}) error {
-	_, err := validateStruct(s)
+	v, err := validateStruct(s)
 	if err != nil {
 		return err
 	}
 
+	iterateOnFields(v, func(f fieldInfo) {
+		if val := getFlagValue(f.flag); val != "" {
+			setFieldValue(f, val)
+		}
+	})
+
 	return nil
 }
 
-// RegisterFlags TODO:
-func RegisterFlags(fs flag.FlagSet, s interface{}) {
+// RegisterFlags accepts a flag set and the pointer to a struct type.
+// For those struct fields that have the flag tag, it will register a flag on the given flag set.
+// The current values of the struct fields will be used as default values for the registered flags.
+// Once the Parse method on the flag set is called, the values will be read, parsed to the appropriate types, and assigned to the corresponding struct fields.
+func RegisterFlags(fs flag.FlagSet, s interface{}) error {
+	v, err := validateStruct(s)
+	if err != nil {
+		return err
+	}
 
+	iterateOnFields(v, func(f fieldInfo) {
+		var dataType string
+		if v.Kind() == reflect.Slice {
+			dataType = fmt.Sprintf("[]%s", reflect.TypeOf(v.Interface()).Elem())
+		} else {
+			dataType = v.Type().String()
+		}
+
+		usage := fmt.Sprintf(
+			"%-15s %s\n%-15s %v",
+			"data type", dataType,
+			"default value", v.Interface(),
+		)
+
+		fs.Var(new(flagValue), f.flag, usage)
+
+		/* if flag.Lookup(flagName) == nil {
+		} */
+
+		/* switch v.Kind() {
+		case reflect.String:
+			fs.StringVar(nil, f.flag, nil, usage)
+		case reflect.Bool:
+			fs.BoolVar(nil, f.flag, nil, usage)
+		case reflect.Float32, reflect.Float64:
+			fs.Float64Var(nil, f.flag, nil, usage)
+		case reflect.Int:
+			fs.IntVar(nil, f.flag, nil, usage)
+		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			fs.Int64Var(nil, f.flag, nil, usage)
+		case reflect.Uint:
+			fs.UintVar(nil, f.flag, nil, usage)
+		case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			fs.Uint64Var(nil, f.flag, nil, usage)
+		case reflect.Slice:
+			// TODO:
+		case reflect.Struct:
+			if t.PkgPath() == "net/url" && t.Name() == "URL" {
+				// TODO:
+			}
+		} */
+	})
+
+	return nil
 }
