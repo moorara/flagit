@@ -1382,12 +1382,12 @@ func TestRegisterFlags(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := RegisterFlags(tc.fs, tc.s)
-			tc.fs.Parse(tc.args[1:])
+			assert.Equal(t, tc.expectedError, err)
 
-			if tc.expectedError != nil {
-				assert.Equal(t, tc.expectedError, err)
-			} else {
+			if tc.expectedError == nil {
+				err := tc.fs.Parse(tc.args[1:])
 				assert.NoError(t, err)
+
 				assert.Equal(t, tc.expected, tc.s)
 			}
 		})
