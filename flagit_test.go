@@ -133,9 +133,9 @@ func TestIsTypeSupported(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			tp := reflect.TypeOf(tc.field)
+			typ := reflect.TypeOf(tc.field)
 
-			assert.Equal(t, tc.expected, isTypeSupported(tp))
+			assert.Equal(t, tc.expected, isTypeSupported(typ))
 		})
 	}
 }
@@ -431,9 +431,9 @@ func TestSetFieldValue(t *testing.T) {
 				// Only consider those fields that are exported, supported, and have flag tag
 				if v.CanSet() && isTypeSupported(v.Type()) && f.Tag.Get(flagTag) != "" {
 					f := fieldInfo{
-						v:    v,
-						name: f.Name,
-						sep:  ",",
+						value:   v,
+						name:    f.Name,
+						listSep: ",",
 					}
 
 					res := setFieldValue(f, tc.values[f.name])
@@ -517,7 +517,7 @@ func TestIterateOnFields(t *testing.T) {
 				// values = append(values, v)
 				fieldNames = append(fieldNames, f.name)
 				flagNames = append(flagNames, f.flag)
-				listSeps = append(listSeps, f.sep)
+				listSeps = append(listSeps, f.listSep)
 			})
 
 			assert.Equal(t, tc.expectedFieldNames, fieldNames)
@@ -632,7 +632,7 @@ func TestPopulate(t *testing.T) {
 			},
 		},
 		{
-			"AllFromFlags#1",
+			"FromFlags#1",
 			[]string{
 				"app",
 				"-string", "content",
@@ -707,7 +707,7 @@ func TestPopulate(t *testing.T) {
 			},
 		},
 		{
-			"AllFromFlags#2",
+			"FromFlags#2",
 			[]string{
 				"app",
 				"--string", "content",
@@ -782,7 +782,7 @@ func TestPopulate(t *testing.T) {
 			},
 		},
 		{
-			"AllFromFlags#3",
+			"FromFlags#3",
 			[]string{
 				"app",
 				"-string=content",
@@ -857,7 +857,7 @@ func TestPopulate(t *testing.T) {
 			},
 		},
 		{
-			"AllFromFlags#4",
+			"FromFlags#4",
 			[]string{
 				"app",
 				"--string=content",

@@ -19,20 +19,25 @@ const (
 )
 
 type fieldInfo struct {
-	v    reflect.Value
-	name string
-	flag string
-	sep  string
+	value   reflect.Value
+	name    string
+	flag    string
+	listSep string
 }
 
 // flagValue implements the flag.Value interface.
-type flagValue struct{}
+type flagValue struct {
+	fieldInfo
+}
 
-func (v *flagValue) String() string {
+// String is called for getting and printing the default value.
+// Default value is already included in the usage string.
+func (v flagValue) String() string {
 	return ""
 }
 
-func (v *flagValue) Set(string) error {
+func (v flagValue) Set(val string) error {
+	_ = setFieldValue(v.fieldInfo, val)
 	return nil
 }
 
@@ -104,73 +109,73 @@ func getFlagValue(flagName string) string {
 }
 
 func setFieldValue(f fieldInfo, val string) bool {
-	switch f.v.Kind() {
+	switch f.value.Kind() {
 	case reflect.String:
-		return setString(f.v, val)
+		return setString(f.value, val)
 	case reflect.Bool:
-		return setBool(f.v, val)
+		return setBool(f.value, val)
 	case reflect.Float32:
-		return setFloat32(f.v, val)
+		return setFloat32(f.value, val)
 	case reflect.Float64:
-		return setFloat64(f.v, val)
+		return setFloat64(f.value, val)
 	case reflect.Int:
-		return setInt(f.v, val)
+		return setInt(f.value, val)
 	case reflect.Int8:
-		return setInt8(f.v, val)
+		return setInt8(f.value, val)
 	case reflect.Int16:
-		return setInt16(f.v, val)
+		return setInt16(f.value, val)
 	case reflect.Int32:
-		return setInt32(f.v, val)
+		return setInt32(f.value, val)
 	case reflect.Int64:
-		return setInt64(f.v, val)
+		return setInt64(f.value, val)
 	case reflect.Uint:
-		return setUint(f.v, val)
+		return setUint(f.value, val)
 	case reflect.Uint8:
-		return setUint8(f.v, val)
+		return setUint8(f.value, val)
 	case reflect.Uint16:
-		return setUint16(f.v, val)
+		return setUint16(f.value, val)
 	case reflect.Uint32:
-		return setUint32(f.v, val)
+		return setUint32(f.value, val)
 	case reflect.Uint64:
-		return setUint64(f.v, val)
+		return setUint64(f.value, val)
 	case reflect.Struct:
-		return setStruct(f.v, val)
+		return setStruct(f.value, val)
 
 	case reflect.Slice:
-		tSlice := reflect.TypeOf(f.v.Interface()).Elem()
-		vals := strings.Split(val, f.sep)
+		tSlice := reflect.TypeOf(f.value.Interface()).Elem()
+		vals := strings.Split(val, f.listSep)
 
 		switch tSlice.Kind() {
 		case reflect.String:
-			return setStringSlice(f.v, vals)
+			return setStringSlice(f.value, vals)
 		case reflect.Bool:
-			return setBoolSlice(f.v, vals)
+			return setBoolSlice(f.value, vals)
 		case reflect.Float32:
-			return setFloat32Slice(f.v, vals)
+			return setFloat32Slice(f.value, vals)
 		case reflect.Float64:
-			return setFloat64Slice(f.v, vals)
+			return setFloat64Slice(f.value, vals)
 		case reflect.Int:
-			return setIntSlice(f.v, vals)
+			return setIntSlice(f.value, vals)
 		case reflect.Int8:
-			return setInt8Slice(f.v, vals)
+			return setInt8Slice(f.value, vals)
 		case reflect.Int16:
-			return setInt16Slice(f.v, vals)
+			return setInt16Slice(f.value, vals)
 		case reflect.Int32:
-			return setInt32Slice(f.v, vals)
+			return setInt32Slice(f.value, vals)
 		case reflect.Int64:
-			return setInt64Slice(f.v, vals)
+			return setInt64Slice(f.value, vals)
 		case reflect.Uint:
-			return setUintSlice(f.v, vals)
+			return setUintSlice(f.value, vals)
 		case reflect.Uint8:
-			return setUint8Slice(f.v, vals)
+			return setUint8Slice(f.value, vals)
 		case reflect.Uint16:
-			return setUint16Slice(f.v, vals)
+			return setUint16Slice(f.value, vals)
 		case reflect.Uint32:
-			return setUint32Slice(f.v, vals)
+			return setUint32Slice(f.value, vals)
 		case reflect.Uint64:
-			return setUint64Slice(f.v, vals)
+			return setUint64Slice(f.value, vals)
 		case reflect.Struct:
-			return setURLSlice(f.v, vals)
+			return setURLSlice(f.value, vals)
 		}
 	}
 
@@ -201,10 +206,10 @@ func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo)) {
 		}
 
 		handle(fieldInfo{
-			v:    v,
-			name: f.Name,
-			flag: flagName,
-			sep:  listSep,
+			value:   v,
+			name:    f.Name,
+			flag:    flagName,
+			listSep: listSep,
 		})
 	}
 }
@@ -231,53 +236,58 @@ func Populate(s interface{}) error {
 // For those struct fields that have the flag tag, it will register a flag on the given flag set.
 // The current values of the struct fields will be used as default values for the registered flags.
 // Once the Parse method on the flag set is called, the values will be read, parsed to the appropriate types, and assigned to the corresponding struct fields.
-func RegisterFlags(fs flag.FlagSet, s interface{}) error {
+func RegisterFlags(fs *flag.FlagSet, s interface{}) error {
 	v, err := validateStruct(s)
 	if err != nil {
 		return err
 	}
 
 	iterateOnFields(v, func(f fieldInfo) {
-		var dataType string
-		if v.Kind() == reflect.Slice {
-			dataType = fmt.Sprintf("[]%s", reflect.TypeOf(v.Interface()).Elem())
-		} else {
-			dataType = v.Type().String()
-		}
-
-		usage := fmt.Sprintf(
-			"%-15s %s\n%-15s %v",
-			"data type", dataType,
-			"default value", v.Interface(),
-		)
-
-		fs.Var(new(flagValue), f.flag, usage)
-
 		/* if flag.Lookup(flagName) == nil {
 		} */
 
-		/* switch v.Kind() {
-		case reflect.String:
-			fs.StringVar(nil, f.flag, nil, usage)
+		var usage string
+
+		switch f.value.Kind() {
 		case reflect.Bool:
-			fs.BoolVar(nil, f.flag, nil, usage)
-		case reflect.Float32, reflect.Float64:
-			fs.Float64Var(nil, f.flag, nil, usage)
-		case reflect.Int:
-			fs.IntVar(nil, f.flag, nil, usage)
-		case reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			fs.Int64Var(nil, f.flag, nil, usage)
-		case reflect.Uint:
-			fs.UintVar(nil, f.flag, nil, usage)
-		case reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			fs.Uint64Var(nil, f.flag, nil, usage)
+			usage = fmt.Sprintf(
+				"%-15s %s\n%-15s %s\n%-15s %v",
+				"input type:", "boolean",
+				"field type:", f.value.Type(),
+				"default value:", f.value.Interface(),
+			)
 		case reflect.Slice:
-			// TODO:
+			usage = fmt.Sprintf(
+				"%-15s %s\n%-15s []%s\n%-15s %v\n%-15s %s",
+				"input type:", "string",
+				"field type:", reflect.TypeOf(f.value.Interface()).Elem(),
+				"default value:", "[]",
+				"separator:", f.listSep,
+			)
 		case reflect.Struct:
+			t := f.value.Type()
 			if t.PkgPath() == "net/url" && t.Name() == "URL" {
-				// TODO:
+				usage = fmt.Sprintf(
+					"%-15s %s\n%-15s %s\n%-15s %v",
+					"input type:", "string",
+					"field type:", f.value.Type(),
+					"default value:", "",
+				)
 			}
-		} */
+		default:
+			usage = fmt.Sprintf(
+				"%-15s %s\n%-15s %s\n%-15s %v",
+				"input type:", "string",
+				"field type:", f.value.Type(),
+				"default value:", f.value.Interface(),
+			)
+		}
+
+		switch f.value.Kind() {
+		case reflect.Bool:
+		default:
+			fs.Var(&flagValue{f}, f.flag, usage)
+		}
 	})
 
 	return nil
