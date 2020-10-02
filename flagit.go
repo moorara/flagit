@@ -37,6 +37,7 @@ func (v flagValue) String() string {
 }
 
 func (v flagValue) Set(val string) error {
+	// TODO:
 	_ = setFieldValue(v.fieldInfo, val)
 	return nil
 }
@@ -182,7 +183,7 @@ func setFieldValue(f fieldInfo, val string) bool {
 	return false
 }
 
-func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo)) {
+func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo) error) error {
 	// Iterate over struct fields
 	for i := 0; i < vStruct.NumField(); i++ {
 		v := vStruct.Field(i)        // reflect.Value --> vField.Kind(), vField.Type().Name(), vField.Type().Kind(), vField.Interface()
@@ -205,13 +206,19 @@ func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo)) {
 			listSep = ","
 		}
 
-		handle(fieldInfo{
+		err := handle(fieldInfo{
 			value:   v,
 			name:    f.Name,
 			flag:    flagName,
 			listSep: listSep,
 		})
+
+		if err != nil {
+			return err
+		}
 	}
+
+	return nil
 }
 
 // Populate accepts the pointer to a struct type.
@@ -223,13 +230,14 @@ func Populate(s interface{}) error {
 		return err
 	}
 
-	iterateOnFields(v, func(f fieldInfo) {
+	return iterateOnFields(v, func(f fieldInfo) error {
 		if val := getFlagValue(f.flag); val != "" {
-			setFieldValue(f, val)
+			// TODO:
+			_ = setFieldValue(f, val)
 		}
-	})
 
-	return nil
+		return nil
+	})
 }
 
 // RegisterFlags accepts a flag set and the pointer to a struct type.
@@ -242,25 +250,24 @@ func RegisterFlags(fs *flag.FlagSet, s interface{}) error {
 		return err
 	}
 
-	iterateOnFields(v, func(f fieldInfo) {
-		/* if flag.Lookup(flagName) == nil {
-		} */
+	return iterateOnFields(v, func(f fieldInfo) error {
+		if fs.Lookup(f.flag) != nil {
+			return fmt.Errorf("flag already registered: %s", f.flag)
+		}
 
+		// Create usage string
 		var usage string
-
 		switch f.value.Kind() {
 		case reflect.Bool:
 			usage = fmt.Sprintf(
-				"%-15s %s\n%-15s %s\n%-15s %v",
-				"input type:", "boolean",
-				"field type:", f.value.Type(),
+				"%-15s %s\n%-15s %v",
+				"data type:", f.value.Type(),
 				"default value:", f.value.Interface(),
 			)
 		case reflect.Slice:
 			usage = fmt.Sprintf(
-				"%-15s %s\n%-15s []%s\n%-15s %v\n%-15s %s",
-				"input type:", "string",
-				"field type:", reflect.TypeOf(f.value.Interface()).Elem(),
+				"%-15s []%s\n%-15s %v\n%-15s %s",
+				"data type:", reflect.TypeOf(f.value.Interface()).Elem(),
 				"default value:", "[]",
 				"separator:", f.listSep,
 			)
@@ -268,27 +275,30 @@ func RegisterFlags(fs *flag.FlagSet, s interface{}) error {
 			t := f.value.Type()
 			if t.PkgPath() == "net/url" && t.Name() == "URL" {
 				usage = fmt.Sprintf(
-					"%-15s %s\n%-15s %s\n%-15s %v",
-					"input type:", "string",
-					"field type:", f.value.Type(),
+					"%-15s %s\n%-15s %v",
+					"data type:", f.value.Type(),
 					"default value:", "",
 				)
 			}
 		default:
 			usage = fmt.Sprintf(
-				"%-15s %s\n%-15s %s\n%-15s %v",
-				"input type:", "string",
-				"field type:", f.value.Type(),
+				"%-15s %s\n%-15s %v",
+				"data type:", f.value.Type(),
 				"default value:", f.value.Interface(),
 			)
 		}
 
+		// Register the flag
 		switch f.value.Kind() {
 		case reflect.Bool:
+			// f.value.CanAddr() expected to be true
+			// f.value.Addr().Interface().(*bool) expected to be ok
+			ptr := f.value.Addr().Interface().(*bool)
+			fs.BoolVar(ptr, f.flag, f.value.Bool(), usage)
 		default:
 			fs.Var(&flagValue{f}, f.flag, usage)
 		}
-	})
 
-	return nil
+		return nil
+	})
 }
