@@ -54,7 +54,7 @@ func (v flagValue) Set(val string) error {
 
 func validateStruct(s interface{}) (reflect.Value, error) {
 	v := reflect.ValueOf(s) // reflect.Value --> v.Type(), v.Kind(), v.NumField()
-	t := reflect.TypeOf(s)  // reflect.Type --> t.Name(), t.Kind(), t.NumField()
+	t := reflect.TypeOf(s)  // reflect.Type --> t.Kind(), t.Name(), t.NumField()
 
 	// A pointer to a struct should be passed
 	if t.Kind() != reflect.Ptr {
@@ -195,11 +195,12 @@ func setFieldValue(f fieldInfo, val string) (bool, error) {
 func iterateOnFields(vStruct reflect.Value, continueOnError bool, handle func(f fieldInfo) error) error {
 	// Iterate over struct fields
 	for i := 0; i < vStruct.NumField(); i++ {
-		v := vStruct.Field(i)        // reflect.Value --> vField.Kind(), vField.Type().Name(), vField.Type().Kind(), vField.Interface()
-		f := vStruct.Type().Field(i) // reflect.StructField --> tField.Name, tField.Type.Name(), tField.Type.Kind(), tField.Tag.Get(tag)
+		v := vStruct.Field(i)        // reflect.Value       --> vField.Kind(), vField.Type().Name(), vField.Type().Kind(), vField.Interface()
+		t := v.Type()                // reflect.Type        --> t.Kind(), t.PkgPath(), t.Name(), t.NumField()
+		f := vStruct.Type().Field(i) // reflect.StructField --> f.Name, f.Type.Name(), f.Type.Kind(), f.Tag.Get(tag)
 
 		// Skip unexported and unsupported fields
-		if !v.CanSet() || !isTypeSupported(v.Type()) {
+		if !v.CanSet() || !isTypeSupported(t) {
 			continue
 		}
 
