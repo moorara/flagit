@@ -1,6 +1,5 @@
 // Package flagit TODO:
 // TODO: support nested fields
-// TODO: Decide how to handle errors
 package flagit
 
 import (
@@ -18,6 +17,11 @@ const (
 	sepTag  = "sep"
 )
 
+var (
+	flagNameRE = regexp.MustCompile(`^[A-Za-z]([0-9A-Za-z-.]*[0-9A-Za-z])?$`)
+	flagArgRE  = regexp.MustCompile("^-{1,2}[A-Za-z]([0-9A-Za-z-.]*[0-9A-Za-z])?")
+)
+
 type fieldInfo struct {
 	value   reflect.Value
 	name    string
@@ -28,6 +32,7 @@ type fieldInfo struct {
 // flagValue implements the flag.Value interface.
 type flagValue struct {
 	fieldInfo
+	continueOnError bool
 }
 
 // String is called for getting and printing the default value.
@@ -37,8 +42,13 @@ func (v flagValue) String() string {
 }
 
 func (v flagValue) Set(val string) error {
-	// TODO:
-	_ = setFieldValue(v.fieldInfo, val)
+	if _, err := setFieldValue(v.fieldInfo, val); err != nil {
+		if v.continueOnError {
+			return nil
+		}
+		return err
+	}
+
 	return nil
 }
 
@@ -85,9 +95,8 @@ func isTypeSupported(t reflect.Type) bool {
 	return false
 }
 
-func getFlagValue(flagName string) string {
-	flagRegex := regexp.MustCompile("-{1,2}" + flagName)
-	genericRegex := regexp.MustCompile("^-{1,2}[A-Za-z].*")
+func getFlagValue(flag string) string {
+	flagRegex := regexp.MustCompile("-{1,2}" + flag)
 
 	for i, arg := range os.Args {
 		if flagRegex.MatchString(arg) {
@@ -96,7 +105,7 @@ func getFlagValue(flagName string) string {
 			}
 
 			if i+1 < len(os.Args) {
-				if val := os.Args[i+1]; !genericRegex.MatchString(val) {
+				if val := os.Args[i+1]; !flagArgRE.MatchString(val) {
 					return val
 				}
 			}
@@ -109,7 +118,7 @@ func getFlagValue(flagName string) string {
 	return ""
 }
 
-func setFieldValue(f fieldInfo, val string) bool {
+func setFieldValue(f fieldInfo, val string) (bool, error) {
 	switch f.value.Kind() {
 	case reflect.String:
 		return setString(f.value, val)
@@ -180,10 +189,10 @@ func setFieldValue(f fieldInfo, val string) bool {
 		}
 	}
 
-	return false
+	return false, fmt.Errorf("unsupported kind: %s", f.value.Kind())
 }
 
-func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo) error) error {
+func iterateOnFields(vStruct reflect.Value, continueOnError bool, handle func(f fieldInfo) error) error {
 	// Iterate over struct fields
 	for i := 0; i < vStruct.NumField(); i++ {
 		v := vStruct.Field(i)        // reflect.Value --> vField.Kind(), vField.Type().Name(), vField.Type().Kind(), vField.Interface()
@@ -198,6 +207,14 @@ func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo) error) erro
 		flagName := f.Tag.Get(flagTag)
 		if flagName == "" {
 			continue
+		}
+
+		// Sanitize the flag name
+		if !flagNameRE.MatchString(flagName) {
+			if continueOnError {
+				continue
+			}
+			return fmt.Errorf("invalid flag name: %s", flagName)
 		}
 
 		// `sep:"..."`
@@ -224,16 +241,20 @@ func iterateOnFields(vStruct reflect.Value, handle func(f fieldInfo) error) erro
 // Populate accepts the pointer to a struct type.
 // For those struct fields that have the flag tag, it will read values from command-line flags and parse them to the appropriate types.
 // This method does not use the built-in flag package for parsing and reading the flags.
-func Populate(s interface{}) error {
+func Populate(s interface{}, continueOnError bool) error {
 	v, err := validateStruct(s)
 	if err != nil {
 		return err
 	}
 
-	return iterateOnFields(v, func(f fieldInfo) error {
+	return iterateOnFields(v, continueOnError, func(f fieldInfo) error {
 		if val := getFlagValue(f.flag); val != "" {
-			// TODO:
-			_ = setFieldValue(f, val)
+			if _, err := setFieldValue(f, val); err != nil {
+				if continueOnError {
+					return nil
+				}
+				return err
+			}
 		}
 
 		return nil
@@ -244,14 +265,17 @@ func Populate(s interface{}) error {
 // For those struct fields that have the flag tag, it will register a flag on the given flag set.
 // The current values of the struct fields will be used as default values for the registered flags.
 // Once the Parse method on the flag set is called, the values will be read, parsed to the appropriate types, and assigned to the corresponding struct fields.
-func RegisterFlags(fs *flag.FlagSet, s interface{}) error {
+func RegisterFlags(fs *flag.FlagSet, s interface{}, continueOnError bool) error {
 	v, err := validateStruct(s)
 	if err != nil {
 		return err
 	}
 
-	return iterateOnFields(v, func(f fieldInfo) error {
+	return iterateOnFields(v, continueOnError, func(f fieldInfo) error {
 		if fs.Lookup(f.flag) != nil {
+			if continueOnError {
+				return nil
+			}
 			return fmt.Errorf("flag already registered: %s", f.flag)
 		}
 
@@ -296,7 +320,8 @@ func RegisterFlags(fs *flag.FlagSet, s interface{}) error {
 			ptr := f.value.Addr().Interface().(*bool)
 			fs.BoolVar(ptr, f.flag, f.value.Bool(), usage)
 		default:
-			fs.Var(&flagValue{f}, f.flag, usage)
+			fv := &flagValue{f, continueOnError}
+			fs.Var(fv, f.flag, usage)
 		}
 
 		return nil
