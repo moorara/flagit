@@ -144,7 +144,7 @@ func TestIsTypeSupported(t *testing.T) {
 func TestGetFlagValue(t *testing.T) {
 	tests := []struct {
 		args              []string
-		flagName          string
+		flag              string
 		expectedFlagValue string
 	}{
 		{[]string{"app", "invalid"}, "invalid", ""},
@@ -184,7 +184,7 @@ func TestGetFlagValue(t *testing.T) {
 
 	for _, tc := range tests {
 		os.Args = tc.args
-		flagValue := getFlagValue(tc.flagName)
+		flagValue := getFlagValue(tc.flag)
 
 		assert.Equal(t, tc.expectedFlagValue, flagValue)
 	}
@@ -202,12 +202,52 @@ func TestSetFieldValue(t *testing.T) {
 	url4, _ := url.Parse("service-4:8080")
 
 	tests := []struct {
-		name           string
-		s              *flags
-		values         map[string]string
-		expectedResult bool
-		expected       *flags
+		name            string
+		s               *flags
+		values          map[string]string
+		expectedUpdated bool
+		expectError     bool
+		expected        *flags
 	}{
+		{
+			"InvalidValues",
+			&flags{},
+			map[string]string{
+				"Bool":          "invalid",
+				"Float32":       "invalid",
+				"Float64":       "invalid",
+				"Int":           "invalid",
+				"Int8":          "invalid",
+				"Int16":         "invalid",
+				"Int32":         "invalid",
+				"Int64":         "invalid",
+				"Uint":          "invalid",
+				"Uint8":         "invalid",
+				"Uint16":        "invalid",
+				"Uint32":        "invalid",
+				"Uint64":        "invalid",
+				"Duration":      "invalid",
+				"URL":           ":invalid",
+				"BoolSlice":     "invalid",
+				"Float32Slice":  "invalid",
+				"Float64Slice":  "invalid",
+				"IntSlice":      "invalid",
+				"Int8Slice":     "invalid",
+				"Int16Slice":    "invalid",
+				"Int32Slice":    "invalid",
+				"Int64Slice":    "invalid",
+				"UintSlice":     "invalid",
+				"Uint8Slice":    "invalid",
+				"Uint16Slice":   "invalid",
+				"Uint32Slice":   "invalid",
+				"Uint64Slice":   "invalid",
+				"DurationSlice": "invalid",
+				"URLSlice":      ":invalid",
+			},
+			false,
+			true,
+			&flags{},
+		},
 		{
 			"NewValues",
 			&flags{
@@ -279,6 +319,7 @@ func TestSetFieldValue(t *testing.T) {
 				"URLSlice":      "service-3:8080,service-4:8080",
 			},
 			true,
+			false,
 			&flags{
 				String:        "content",
 				Bool:          true,
@@ -385,6 +426,7 @@ func TestSetFieldValue(t *testing.T) {
 				"URLSlice":      "service-3:8080,service-4:8080",
 			},
 			false,
+			false,
 			&flags{
 				String:        "content",
 				Bool:          true,
@@ -431,14 +473,24 @@ func TestSetFieldValue(t *testing.T) {
 
 				// Only consider those fields that are exported, supported, and have flag tag
 				if v.CanSet() && isTypeSupported(v.Type()) && f.Tag.Get(flagTag) != "" {
-					f := fieldInfo{
-						value:   v,
-						name:    f.Name,
-						listSep: ",",
-					}
+					t.Run(f.Name, func(t *testing.T) {
+						f := fieldInfo{
+							value:   v,
+							name:    f.Name,
+							listSep: ",",
+						}
 
-					res := setFieldValue(f, tc.values[f.name])
-					assert.Equal(t, tc.expectedResult, res)
+						if val := tc.values[f.name]; val != "" {
+							updated, err := setFieldValue(f, val)
+
+							if tc.expectError {
+								assert.Error(t, err)
+							} else {
+								assert.NoError(t, err)
+								assert.Equal(t, tc.expectedUpdated, updated)
+							}
+						}
+					})
 				}
 			}
 
@@ -448,18 +500,42 @@ func TestSetFieldValue(t *testing.T) {
 }
 
 func TestIterateOnFields(t *testing.T) {
+	invalid := struct {
+		LogLevel string `flag:"log level"`
+	}{}
+
 	tests := []struct {
 		name               string
 		s                  interface{}
+		continueOnError    bool
 		expectedError      error
 		expectedFieldNames []string
 		expectedFlagNames  []string
 		expectedListSeps   []string
 	}{
 		{
-			name:          "OK",
-			s:             &flags{},
-			expectedError: nil,
+			name:               "StopOnError",
+			s:                  &invalid,
+			continueOnError:    false,
+			expectedError:      errors.New("invalid flag name: log level"),
+			expectedFieldNames: []string{},
+			expectedFlagNames:  []string{},
+			expectedListSeps:   []string{},
+		},
+		{
+			name:               "ContinueOnError",
+			s:                  &invalid,
+			continueOnError:    true,
+			expectedError:      nil,
+			expectedFieldNames: []string{},
+			expectedFlagNames:  []string{},
+			expectedListSeps:   []string{},
+		},
+		{
+			name:            "OK",
+			s:               &flags{},
+			continueOnError: false,
+			expectedError:   nil,
 			expectedFieldNames: []string{
 				"String",
 				"Bool",
@@ -514,7 +590,7 @@ func TestIterateOnFields(t *testing.T) {
 			vStruct, err := validateStruct(tc.s)
 			assert.NoError(t, err)
 
-			err = iterateOnFields(vStruct, func(f fieldInfo) error {
+			err = iterateOnFields(vStruct, tc.continueOnError, func(f fieldInfo) error {
 				fieldNames = append(fieldNames, f.name)
 				flagNames = append(flagNames, f.flag)
 				listSeps = append(listSeps, f.listSep)
@@ -537,24 +613,27 @@ func TestPopulate(t *testing.T) {
 	url2, _ := url.Parse("service-2:8080")
 
 	tests := []struct {
-		name          string
-		args          []string
-		s             interface{}
-		expectedError error
-		expected      *flags
+		name            string
+		args            []string
+		s               interface{}
+		continueOnError bool
+		expectedError   string
+		expected        *flags
 	}{
 		{
 			"NonStruct",
 			[]string{"app"},
 			new(string),
-			errors.New("non-struct type: you should pass a pointer to a struct type"),
+			false,
+			"non-struct type: you should pass a pointer to a struct type",
 			&flags{},
 		},
 		{
 			"NonPointer",
 			[]string{"app"},
 			flags{},
-			errors.New("non-pointer type: you should pass a pointer to a struct type"),
+			false,
+			"non-pointer type: you should pass a pointer to a struct type",
 			&flags{},
 		},
 		{
@@ -595,7 +674,8 @@ func TestPopulate(t *testing.T) {
 				DurationSlice: []time.Duration{d90m, d120m},
 				URLSlice:      []url.URL{*url1, *url2},
 			},
-			nil,
+			false,
+			"",
 			&flags{
 				unexported:    "internal",
 				String:        "default",
@@ -670,7 +750,8 @@ func TestPopulate(t *testing.T) {
 				"-url-slice", "service-1:8080,service-2:8080",
 			},
 			&flags{},
-			nil,
+			false,
+			"",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -745,7 +826,8 @@ func TestPopulate(t *testing.T) {
 				"--url-slice", "service-1:8080,service-2:8080",
 			},
 			&flags{},
-			nil,
+			false,
+			"",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -820,7 +902,8 @@ func TestPopulate(t *testing.T) {
 				"-url-slice=service-1:8080,service-2:8080",
 			},
 			&flags{},
-			nil,
+			false,
+			"",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -895,7 +978,8 @@ func TestPopulate(t *testing.T) {
 				"--url-slice=service-1:8080,service-2:8080",
 			},
 			&flags{},
-			nil,
+			false,
+			"",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -932,6 +1016,57 @@ func TestPopulate(t *testing.T) {
 				URLSlice:      []url.URL{*url1, *url2},
 			},
 		},
+		{
+			"StopOnError",
+			[]string{
+				"app",
+				"-int", "invalid",
+			},
+			&flags{},
+			false,
+			`strconv.ParseInt: parsing "invalid": invalid syntax`,
+			&flags{},
+		},
+		{
+			"ContinueOnError",
+			[]string{
+				"app",
+				"-bool", "invalid",
+				"-float32", "invalid",
+				"-float64", "invalid",
+				"-int", "invalid",
+				"-int8", "invalid",
+				"-int16", "invalid",
+				"-int32", "invalid",
+				"-int64", "invalid",
+				"-uint", "invalid",
+				"-uint8", "invalid",
+				"-uint16", "invalid",
+				"-uint32", "invalid",
+				"-uint64", "invalid",
+				"-duration", "invalid",
+				"-url", ":invalid",
+				"-bool-slice", "invalid",
+				"-float32-slice", "invalid",
+				"-float64-slice", "invalid",
+				"-int-slice", "invalid",
+				"-int8-slice", "invalid",
+				"-int16-slice", "invalid",
+				"-int32-slice", "invalid",
+				"-int64-slice", "invalid",
+				"-uint-slice", "invalid",
+				"-uint8-slice", "invalid",
+				"-uint16-slice", "invalid",
+				"-uint32-slice", "invalid",
+				"-uint64-slice", "invalid",
+				"-duration-slice", "invalid",
+				"-url-slice", ":invalid",
+			},
+			&flags{},
+			true,
+			"",
+			&flags{},
+		},
 	}
 
 	origArgs := os.Args
@@ -943,13 +1078,14 @@ func TestPopulate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			os.Args = tc.args
 
-			err := Populate(tc.s)
+			err := Populate(tc.s, tc.continueOnError)
 
-			if tc.expectedError != nil {
-				assert.Equal(t, tc.expectedError, err)
-			} else {
+			if tc.expectedError == "" {
 				assert.NoError(t, err)
 				assert.Equal(t, tc.expected, tc.s)
+			} else {
+				assert.Error(t, err)
+				assert.EqualError(t, err, tc.expectedError)
 			}
 		})
 	}
@@ -966,19 +1102,22 @@ func TestRegisterFlags(t *testing.T) {
 	fs.String("string", "", "")
 
 	tests := []struct {
-		name          string
-		args          []string
-		fs            *flag.FlagSet
-		s             interface{}
-		expectedError error
-		expected      *flags
+		name               string
+		args               []string
+		fs                 *flag.FlagSet
+		s                  interface{}
+		continueOnError    bool
+		expectedError      error
+		expectedParseError string
+		expected           *flags
 	}{
 		{
 			"NonStruct",
 			[]string{"app"},
 			new(flag.FlagSet),
 			new(string),
-			errors.New("non-struct type: you should pass a pointer to a struct type"),
+			false,
+			errors.New("non-struct type: you should pass a pointer to a struct type"), "",
 			&flags{},
 		},
 		{
@@ -986,15 +1125,26 @@ func TestRegisterFlags(t *testing.T) {
 			[]string{"app"},
 			new(flag.FlagSet),
 			flags{},
-			errors.New("non-pointer type: you should pass a pointer to a struct type"),
+			false,
+			errors.New("non-pointer type: you should pass a pointer to a struct type"), "",
 			&flags{},
 		},
 		{
-			"FlagAlreadyRegistered",
+			"FlagRegistered_StopOnError",
 			[]string{"app"},
 			fs,
 			&flags{},
-			errors.New("flag already registered: string"),
+			false,
+			errors.New("flag already registered: string"), "",
+			&flags{},
+		},
+		{
+			"FlagRegistered_ContinueOnError",
+			[]string{"app"},
+			fs,
+			&flags{},
+			true,
+			nil, "",
 			&flags{},
 		},
 		{
@@ -1036,7 +1186,8 @@ func TestRegisterFlags(t *testing.T) {
 				DurationSlice: []time.Duration{d90m, d120m},
 				URLSlice:      []url.URL{*url1, *url2},
 			},
-			nil,
+			false,
+			nil, "",
 			&flags{
 				unexported:    "internal",
 				String:        "default",
@@ -1112,7 +1263,8 @@ func TestRegisterFlags(t *testing.T) {
 			},
 			new(flag.FlagSet),
 			&flags{},
-			nil,
+			false,
+			nil, "",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -1188,7 +1340,8 @@ func TestRegisterFlags(t *testing.T) {
 			},
 			new(flag.FlagSet),
 			&flags{},
-			nil,
+			false,
+			nil, "",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -1264,7 +1417,8 @@ func TestRegisterFlags(t *testing.T) {
 			},
 			new(flag.FlagSet),
 			&flags{},
-			nil,
+			false,
+			nil, "",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -1340,7 +1494,8 @@ func TestRegisterFlags(t *testing.T) {
 			},
 			new(flag.FlagSet),
 			&flags{},
-			nil,
+			false,
+			nil, "",
 			&flags{
 				unexported:    "",
 				String:        "content",
@@ -1377,18 +1532,75 @@ func TestRegisterFlags(t *testing.T) {
 				URLSlice:      []url.URL{*url1, *url2},
 			},
 		},
+		{
+			"StopOnError",
+			[]string{
+				"app",
+				"-int", "invalid",
+			},
+			new(flag.FlagSet),
+			&flags{},
+			false,
+			nil, `invalid value "invalid" for flag -int: strconv.ParseInt: parsing "invalid": invalid syntax`,
+			&flags{},
+		},
+		{
+			"ContinueOnError",
+			[]string{
+				"app",
+				"-float32", "invalid",
+				"-float64", "invalid",
+				"-int", "invalid",
+				"-int8", "invalid",
+				"-int16", "invalid",
+				"-int32", "invalid",
+				"-int64", "invalid",
+				"-uint", "invalid",
+				"-uint8", "invalid",
+				"-uint16", "invalid",
+				"-uint32", "invalid",
+				"-uint64", "invalid",
+				"-duration", "invalid",
+				"-url", ":invalid",
+				"-bool-slice", "invalid",
+				"-float32-slice", "invalid",
+				"-float64-slice", "invalid",
+				"-int-slice", "invalid",
+				"-int8-slice", "invalid",
+				"-int16-slice", "invalid",
+				"-int32-slice", "invalid",
+				"-int64-slice", "invalid",
+				"-uint-slice", "invalid",
+				"-uint8-slice", "invalid",
+				"-uint16-slice", "invalid",
+				"-uint32-slice", "invalid",
+				"-uint64-slice", "invalid",
+				"-duration-slice", "invalid",
+				"-url-slice", ":invalid",
+			},
+			new(flag.FlagSet),
+			&flags{},
+			true,
+			nil, "",
+			&flags{},
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := RegisterFlags(tc.fs, tc.s)
+			err := RegisterFlags(tc.fs, tc.s, tc.continueOnError)
 			assert.Equal(t, tc.expectedError, err)
 
 			if tc.expectedError == nil {
 				err := tc.fs.Parse(tc.args[1:])
-				assert.NoError(t, err)
 
-				assert.Equal(t, tc.expected, tc.s)
+				if tc.expectedParseError == "" {
+					assert.NoError(t, err)
+					assert.Equal(t, tc.expected, tc.s)
+				} else {
+					assert.Error(t, err)
+					assert.EqualError(t, err, tc.expectedParseError)
+				}
 			}
 		})
 	}
