@@ -1,5 +1,6 @@
-// Package flagit TODO:
-// TODO: support nested fields
+// Package flagit adds support for a new struct tag: flag.
+// You can tag your struct fields with the flag tag and parse command-line arguments into your struct fields.
+// Nested structs are also supported. You can either parse the command-line arguments using this package or the built-in flag package.
 package flagit
 
 import (
@@ -54,7 +55,7 @@ func (v flagValue) Set(val string) error {
 
 func validateStruct(s interface{}) (reflect.Value, error) {
 	v := reflect.ValueOf(s) // reflect.Value --> v.Type(), v.Kind(), v.NumField()
-	t := reflect.TypeOf(s)  // reflect.Type --> t.Name(), t.Kind(), t.NumField()
+	t := reflect.TypeOf(s)  // reflect.Type --> t.Kind(), t.Name(), t.NumField()
 
 	// A pointer to a struct should be passed
 	if t.Kind() != reflect.Ptr {
@@ -70,6 +71,18 @@ func validateStruct(s interface{}) (reflect.Value, error) {
 	}
 
 	return v, nil
+}
+
+func isNestedStruct(t reflect.Type) bool {
+	if t.Kind() != reflect.Struct {
+		return false
+	}
+
+	if t.PkgPath() == "net/url" && t.Name() == "URL" {
+		return false
+	}
+
+	return true
 }
 
 func isTypeSupported(t reflect.Type) bool {
@@ -192,14 +205,25 @@ func setFieldValue(f fieldInfo, val string) (bool, error) {
 	return false, fmt.Errorf("unsupported kind: %s", f.value.Kind())
 }
 
-func iterateOnFields(vStruct reflect.Value, continueOnError bool, handle func(f fieldInfo) error) error {
+func iterateOnFields(prefix string, vStruct reflect.Value, continueOnError bool, handle func(f fieldInfo) error) error {
 	// Iterate over struct fields
 	for i := 0; i < vStruct.NumField(); i++ {
-		v := vStruct.Field(i)        // reflect.Value --> vField.Kind(), vField.Type().Name(), vField.Type().Kind(), vField.Interface()
-		f := vStruct.Type().Field(i) // reflect.StructField --> tField.Name, tField.Type.Name(), tField.Type.Kind(), tField.Tag.Get(tag)
+		v := vStruct.Field(i)        // reflect.Value       --> vField.Kind(), vField.Type().Name(), vField.Type().Kind(), vField.Interface()
+		t := v.Type()                // reflect.Type        --> t.Kind(), t.PkgPath(), t.Name(), t.NumField()
+		f := vStruct.Type().Field(i) // reflect.StructField --> f.Name, f.Type.Name(), f.Type.Kind(), f.Tag.Get(tag)
+
+		// Recursively, iterate on nested structs with flag tag
+		if isNestedStruct(t) {
+			if val, ok := f.Tag.Lookup(flagTag); ok {
+				newPrefix := prefix + val
+				if err := iterateOnFields(newPrefix, v, continueOnError, handle); err != nil {
+					return err
+				}
+			}
+		}
 
 		// Skip unexported and unsupported fields
-		if !v.CanSet() || !isTypeSupported(v.Type()) {
+		if !v.CanSet() || !isTypeSupported(t) {
 			continue
 		}
 
@@ -208,6 +232,9 @@ func iterateOnFields(vStruct reflect.Value, continueOnError bool, handle func(f 
 		if flagName == "" {
 			continue
 		}
+
+		// Apply prefix
+		flagName = prefix + flagName
 
 		// Sanitize the flag name
 		if !flagNameRE.MatchString(flagName) {
@@ -247,7 +274,7 @@ func Populate(s interface{}, continueOnError bool) error {
 		return err
 	}
 
-	return iterateOnFields(v, continueOnError, func(f fieldInfo) error {
+	return iterateOnFields("", v, continueOnError, func(f fieldInfo) error {
 		if val := getFlagValue(f.flag); val != "" {
 			if _, err := setFieldValue(f, val); err != nil {
 				if continueOnError {
@@ -271,7 +298,7 @@ func RegisterFlags(fs *flag.FlagSet, s interface{}, continueOnError bool) error 
 		return err
 	}
 
-	return iterateOnFields(v, continueOnError, func(f fieldInfo) error {
+	return iterateOnFields("", v, continueOnError, func(f fieldInfo) error {
 		if fs.Lookup(f.flag) != nil {
 			if continueOnError {
 				return nil

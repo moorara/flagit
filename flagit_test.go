@@ -12,42 +12,95 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type flags struct {
-	unexported  string
-	WithoutFlag string
+type (
+	Floats struct {
+		Float32 float32 `flag:"float32"`
+		Float64 float64 `flag:"float64"`
+	}
 
-	String        string          `flag:"string"`
-	Bool          bool            `flag:"bool"`
-	Float32       float32         `flag:"float32"`
-	Float64       float64         `flag:"float64"`
-	Int           int             `flag:"int"`
-	Int8          int8            `flag:"int8"`
-	Int16         int16           `flag:"int16"`
-	Int32         int32           `flag:"int32"`
-	Int64         int64           `flag:"int64"`
-	Uint          uint            `flag:"uint"`
-	Uint8         uint8           `flag:"uint8"`
-	Uint16        uint16          `flag:"uint16"`
-	Uint32        uint32          `flag:"uint32"`
-	Uint64        uint64          `flag:"uint64"`
-	Duration      time.Duration   `flag:"duration"`
-	URL           url.URL         `flag:"url"`
-	StringSlice   []string        `flag:"string-slice"`
-	BoolSlice     []bool          `flag:"bool-slice"`
-	Float32Slice  []float32       `flag:"float32-slice"`
-	Float64Slice  []float64       `flag:"float64-slice"`
-	IntSlice      []int           `flag:"int-slice"`
-	Int8Slice     []int8          `flag:"int8-slice"`
-	Int16Slice    []int16         `flag:"int16-slice"`
-	Int32Slice    []int32         `flag:"int32-slice"`
-	Int64Slice    []int64         `flag:"int64-slice"`
-	UintSlice     []uint          `flag:"uint-slice"`
-	Uint8Slice    []uint8         `flag:"uint8-slice"`
-	Uint16Slice   []uint16        `flag:"uint16-slice"`
-	Uint32Slice   []uint32        `flag:"uint32-slice"`
-	Uint64Slice   []uint64        `flag:"uint64-slice"`
-	DurationSlice []time.Duration `flag:"duration-slice"`
-	URLSlice      []url.URL       `flag:"url-slice"`
+	Ints struct {
+		Int   int   `flag:"int"`
+		Int8  int8  `flag:"int8"`
+		Int16 int16 `flag:"int16"`
+		Int32 int32 `flag:"int32"`
+		Int64 int64 `flag:"int64"`
+	}
+
+	Uints struct {
+		Uint   uint   `flag:"uint"`
+		Uint8  uint8  `flag:"uint8"`
+		Uint16 uint16 `flag:"uint16"`
+		Uint32 uint32 `flag:"uint32"`
+		Uint64 uint64 `flag:"uint64"`
+	}
+
+	FloatSlices struct {
+		Float32Slice []float32 `flag:"float32-slice"`
+		Float64Slice []float64 `flag:"float64-slice"`
+	}
+
+	IntSlices struct {
+		IntSlice   []int   `flag:"int-slice"`
+		Int8Slice  []int8  `flag:"int8-slice"`
+		Int16Slice []int16 `flag:"int16-slice"`
+		Int32Slice []int32 `flag:"int32-slice"`
+		Int64Slice []int64 `flag:"int64-slice"`
+	}
+
+	UintSlices struct {
+		UintSlice   []uint   `flag:"uint-slice"`
+		Uint8Slice  []uint8  `flag:"uint8-slice"`
+		Uint16Slice []uint16 `flag:"uint16-slice"`
+		Uint32Slice []uint32 `flag:"uint32-slice"`
+		Uint64Slice []uint64 `flag:"uint64-slice"`
+	}
+
+	SliceGroup struct {
+		StringSlice   []string        `flag:"string-slice"`
+		BoolSlice     []bool          `flag:"bool-slice"`
+		FloatSlices   FloatSlices     `flag:""`
+		IntSlices     IntSlices       `flag:""`
+		UintSlices    UintSlices      `flag:""`
+		DurationSlice []time.Duration `flag:"duration-slice"`
+		URLSlice      []url.URL       `flag:"url-slice"`
+	}
+
+	Flags struct {
+		unexported  string
+		WithoutFlag string
+		String      string        `flag:"string"`
+		Bool        bool          `flag:"bool"`
+		Floats      Floats        `flag:""`
+		Ints        Ints          `flag:""`
+		Uints       Uints         `flag:""`
+		Duration    time.Duration `flag:"duration"`
+		URL         url.URL       `flag:"url"`
+		SliceGroup  SliceGroup    `flag:""`
+	}
+)
+
+func getFields(vStruct reflect.Value, handle func(f fieldInfo)) {
+	for i := 0; i < vStruct.NumField(); i++ {
+		v := vStruct.Field(i)
+		t := v.Type()
+		f := vStruct.Type().Field(i)
+
+		if isNestedStruct(t) {
+			if _, ok := f.Tag.Lookup(flagTag); ok {
+				getFields(v, handle)
+			}
+		}
+
+		if !v.CanSet() || !isTypeSupported(t) && f.Tag.Get(flagTag) != "" {
+			continue
+		}
+
+		handle(fieldInfo{
+			value:   v,
+			name:    f.Name,
+			listSep: ",",
+		})
+	}
 }
 
 func TestValidateStruct(t *testing.T) {
@@ -63,12 +116,12 @@ func TestValidateStruct(t *testing.T) {
 		},
 		{
 			"NonPointer",
-			flags{},
+			Flags{},
 			errors.New("non-pointer type: you should pass a pointer to a struct type"),
 		},
 		{
 			"OK",
-			&flags{},
+			&Flags{},
 			nil,
 		},
 	}
@@ -86,6 +139,25 @@ func TestValidateStruct(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsNestedStruct(t *testing.T) {
+	vStruct := reflect.ValueOf(struct {
+		Int   int
+		URL   url.URL
+		Group struct {
+			String string
+		}
+	}{})
+
+	vInt := vStruct.FieldByName("Int")
+	assert.False(t, isNestedStruct(vInt.Type()))
+
+	vURL := vStruct.FieldByName("URL")
+	assert.False(t, isNestedStruct(vURL.Type()))
+
+	vGroup := vStruct.FieldByName("Group")
+	assert.True(t, isNestedStruct(vGroup.Type()))
 }
 
 func TestIsTypeSupported(t *testing.T) {
@@ -203,15 +275,15 @@ func TestSetFieldValue(t *testing.T) {
 
 	tests := []struct {
 		name            string
-		s               *flags
+		s               *Flags
 		values          map[string]string
 		expectedUpdated bool
 		expectError     bool
-		expected        *flags
+		expected        *Flags
 	}{
 		{
 			"InvalidValues",
-			&flags{},
+			&Flags{},
 			map[string]string{
 				"Bool":          "invalid",
 				"Float32":       "invalid",
@@ -246,43 +318,57 @@ func TestSetFieldValue(t *testing.T) {
 			},
 			false,
 			true,
-			&flags{},
+			&Flags{},
 		},
 		{
 			"NewValues",
-			&flags{
-				String:        "default",
-				Bool:          false,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				String: "default",
+				Bool:   false,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 			map[string]string{
 				"String":        "content",
@@ -320,76 +406,104 @@ func TestSetFieldValue(t *testing.T) {
 			},
 			true,
 			false,
-			&flags{
-				String:        "content",
-				Bool:          true,
-				Float32:       2.7182,
-				Float64:       2.7182818284,
-				Int:           2147483647,
-				Int8:          127,
-				Int16:         32767,
-				Int32:         2147483647,
-				Int64:         9223372036854775807,
-				Uint:          2147483648,
-				Uint8:         128,
-				Uint16:        32768,
-				Uint32:        2147483648,
-				Uint64:        9223372036854775808,
-				Duration:      d4h,
-				URL:           *url3,
-				StringSlice:   []string{"mona", "milad"},
-				BoolSlice:     []bool{true, false},
-				Float32Slice:  []float32{2.7182, 3.1415},
-				Float64Slice:  []float64{2.71828182845, 3.14159265359},
-				IntSlice:      []int{2147483647, -2147483648},
-				Int8Slice:     []int8{127, -128},
-				Int16Slice:    []int16{32767, -32768},
-				Int32Slice:    []int32{2147483647, -2147483648},
-				Int64Slice:    []int64{9223372036854775807, -9223372036854775808},
-				UintSlice:     []uint{4294967295, 0},
-				Uint8Slice:    []uint8{255, 0},
-				Uint16Slice:   []uint16{65535, 0},
-				Uint32Slice:   []uint32{4294967295, 0},
-				Uint64Slice:   []uint64{18446744073709551615, 0},
-				DurationSlice: []time.Duration{d4h, d8h},
-				URLSlice:      []url.URL{*url3, *url4},
+			&Flags{
+				String: "content",
+				Bool:   true,
+				Floats: Floats{
+					Float32: 2.7182,
+					Float64: 2.7182818284,
+				},
+				Ints: Ints{
+					Int:   2147483647,
+					Int8:  127,
+					Int16: 32767,
+					Int32: 2147483647,
+					Int64: 9223372036854775807,
+				},
+				Uints: Uints{
+					Uint:   2147483648,
+					Uint8:  128,
+					Uint16: 32768,
+					Uint32: 2147483648,
+					Uint64: 9223372036854775808,
+				},
+				Duration: d4h,
+				URL:      *url3,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"mona", "milad"},
+					BoolSlice:   []bool{true, false},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{2.7182, 3.1415},
+						Float64Slice: []float64{2.71828182845, 3.14159265359},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{2147483647, -2147483648},
+						Int8Slice:  []int8{127, -128},
+						Int16Slice: []int16{32767, -32768},
+						Int32Slice: []int32{2147483647, -2147483648},
+						Int64Slice: []int64{9223372036854775807, -9223372036854775808},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{4294967295, 0},
+						Uint8Slice:  []uint8{255, 0},
+						Uint16Slice: []uint16{65535, 0},
+						Uint32Slice: []uint32{4294967295, 0},
+						Uint64Slice: []uint64{18446744073709551615, 0},
+					},
+					DurationSlice: []time.Duration{d4h, d8h},
+					URLSlice:      []url.URL{*url3, *url4},
+				},
 			},
 		},
 		{
 			"NoNewValues",
-			&flags{
-				String:        "content",
-				Bool:          true,
-				Float32:       2.7182,
-				Float64:       2.7182818284,
-				Int:           2147483647,
-				Int8:          127,
-				Int16:         32767,
-				Int32:         2147483647,
-				Int64:         9223372036854775807,
-				Uint:          2147483648,
-				Uint8:         128,
-				Uint16:        32768,
-				Uint32:        2147483648,
-				Uint64:        9223372036854775808,
-				Duration:      d4h,
-				URL:           *url3,
-				StringSlice:   []string{"mona", "milad"},
-				BoolSlice:     []bool{true, false},
-				Float32Slice:  []float32{2.7182, 3.1415},
-				Float64Slice:  []float64{2.71828182845, 3.14159265359},
-				IntSlice:      []int{2147483647, -2147483648},
-				Int8Slice:     []int8{127, -128},
-				Int16Slice:    []int16{32767, -32768},
-				Int32Slice:    []int32{2147483647, -2147483648},
-				Int64Slice:    []int64{9223372036854775807, -9223372036854775808},
-				UintSlice:     []uint{4294967295, 0},
-				Uint8Slice:    []uint8{255, 0},
-				Uint16Slice:   []uint16{65535, 0},
-				Uint32Slice:   []uint32{4294967295, 0},
-				Uint64Slice:   []uint64{18446744073709551615, 0},
-				DurationSlice: []time.Duration{d4h, d8h},
-				URLSlice:      []url.URL{*url3, *url4},
+			&Flags{
+				String: "content",
+				Bool:   true,
+				Floats: Floats{
+					Float32: 2.7182,
+					Float64: 2.7182818284,
+				},
+				Ints: Ints{
+					Int:   2147483647,
+					Int8:  127,
+					Int16: 32767,
+					Int32: 2147483647,
+					Int64: 9223372036854775807,
+				},
+				Uints: Uints{
+					Uint:   2147483648,
+					Uint8:  128,
+					Uint16: 32768,
+					Uint32: 2147483648,
+					Uint64: 9223372036854775808,
+				},
+				Duration: d4h,
+				URL:      *url3,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"mona", "milad"},
+					BoolSlice:   []bool{true, false},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{2.7182, 3.1415},
+						Float64Slice: []float64{2.71828182845, 3.14159265359},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{2147483647, -2147483648},
+						Int8Slice:  []int8{127, -128},
+						Int16Slice: []int16{32767, -32768},
+						Int32Slice: []int32{2147483647, -2147483648},
+						Int64Slice: []int64{9223372036854775807, -9223372036854775808},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{4294967295, 0},
+						Uint8Slice:  []uint8{255, 0},
+						Uint16Slice: []uint16{65535, 0},
+						Uint32Slice: []uint32{4294967295, 0},
+						Uint64Slice: []uint64{18446744073709551615, 0},
+					},
+					DurationSlice: []time.Duration{d4h, d8h},
+					URLSlice:      []url.URL{*url3, *url4},
+				},
 			},
 			map[string]string{
 				"String":        "content",
@@ -427,39 +541,53 @@ func TestSetFieldValue(t *testing.T) {
 			},
 			false,
 			false,
-			&flags{
-				String:        "content",
-				Bool:          true,
-				Float32:       2.7182,
-				Float64:       2.7182818284,
-				Int:           2147483647,
-				Int8:          127,
-				Int16:         32767,
-				Int32:         2147483647,
-				Int64:         9223372036854775807,
-				Uint:          2147483648,
-				Uint8:         128,
-				Uint16:        32768,
-				Uint32:        2147483648,
-				Uint64:        9223372036854775808,
-				Duration:      d4h,
-				URL:           *url3,
-				StringSlice:   []string{"mona", "milad"},
-				BoolSlice:     []bool{true, false},
-				Float32Slice:  []float32{2.7182, 3.1415},
-				Float64Slice:  []float64{2.71828182845, 3.14159265359},
-				IntSlice:      []int{2147483647, -2147483648},
-				Int8Slice:     []int8{127, -128},
-				Int16Slice:    []int16{32767, -32768},
-				Int32Slice:    []int32{2147483647, -2147483648},
-				Int64Slice:    []int64{9223372036854775807, -9223372036854775808},
-				UintSlice:     []uint{4294967295, 0},
-				Uint8Slice:    []uint8{255, 0},
-				Uint16Slice:   []uint16{65535, 0},
-				Uint32Slice:   []uint32{4294967295, 0},
-				Uint64Slice:   []uint64{18446744073709551615, 0},
-				DurationSlice: []time.Duration{d4h, d8h},
-				URLSlice:      []url.URL{*url3, *url4},
+			&Flags{
+				String: "content",
+				Bool:   true,
+				Floats: Floats{
+					Float32: 2.7182,
+					Float64: 2.7182818284,
+				},
+				Ints: Ints{
+					Int:   2147483647,
+					Int8:  127,
+					Int16: 32767,
+					Int32: 2147483647,
+					Int64: 9223372036854775807,
+				},
+				Uints: Uints{
+					Uint:   2147483648,
+					Uint8:  128,
+					Uint16: 32768,
+					Uint32: 2147483648,
+					Uint64: 9223372036854775808,
+				},
+				Duration: d4h,
+				URL:      *url3,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"mona", "milad"},
+					BoolSlice:   []bool{true, false},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{2.7182, 3.1415},
+						Float64Slice: []float64{2.71828182845, 3.14159265359},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{2147483647, -2147483648},
+						Int8Slice:  []int8{127, -128},
+						Int16Slice: []int16{32767, -32768},
+						Int32Slice: []int32{2147483647, -2147483648},
+						Int64Slice: []int64{9223372036854775807, -9223372036854775808},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{4294967295, 0},
+						Uint8Slice:  []uint8{255, 0},
+						Uint16Slice: []uint16{65535, 0},
+						Uint32Slice: []uint32{4294967295, 0},
+						Uint64Slice: []uint64{18446744073709551615, 0},
+					},
+					DurationSlice: []time.Duration{d4h, d8h},
+					URLSlice:      []url.URL{*url3, *url4},
+				},
 			},
 		},
 	}
@@ -467,32 +595,18 @@ func TestSetFieldValue(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			vStruct := reflect.ValueOf(tc.s).Elem()
-			for i := 0; i < vStruct.NumField(); i++ {
-				v := vStruct.Field(i)
-				f := vStruct.Type().Field(i)
+			getFields(vStruct, func(f fieldInfo) {
+				if val := tc.values[f.name]; val != "" {
+					updated, err := setFieldValue(f, val)
 
-				// Only consider those fields that are exported, supported, and have flag tag
-				if v.CanSet() && isTypeSupported(v.Type()) && f.Tag.Get(flagTag) != "" {
-					t.Run(f.Name, func(t *testing.T) {
-						f := fieldInfo{
-							value:   v,
-							name:    f.Name,
-							listSep: ",",
-						}
-
-						if val := tc.values[f.name]; val != "" {
-							updated, err := setFieldValue(f, val)
-
-							if tc.expectError {
-								assert.Error(t, err)
-							} else {
-								assert.NoError(t, err)
-								assert.Equal(t, tc.expectedUpdated, updated)
-							}
-						}
-					})
+					if tc.expectError {
+						assert.Error(t, err)
+					} else {
+						assert.NoError(t, err)
+						assert.Equal(t, tc.expectedUpdated, updated)
+					}
 				}
-			}
+			})
 
 			assert.Equal(t, tc.expected, tc.s)
 		})
@@ -533,7 +647,7 @@ func TestIterateOnFields(t *testing.T) {
 		},
 		{
 			name:            "OK",
-			s:               &flags{},
+			s:               &Flags{},
 			continueOnError: false,
 			expectedError:   nil,
 			expectedFieldNames: []string{
@@ -590,7 +704,7 @@ func TestIterateOnFields(t *testing.T) {
 			vStruct, err := validateStruct(tc.s)
 			assert.NoError(t, err)
 
-			err = iterateOnFields(vStruct, tc.continueOnError, func(f fieldInfo) error {
+			err = iterateOnFields("", vStruct, tc.continueOnError, func(f fieldInfo) error {
 				fieldNames = append(fieldNames, f.name)
 				flagNames = append(flagNames, f.flag)
 				listSeps = append(listSeps, f.listSep)
@@ -618,7 +732,7 @@ func TestPopulate(t *testing.T) {
 		s               interface{}
 		continueOnError bool
 		expectedError   string
-		expected        *flags
+		expected        *Flags
 	}{
 		{
 			"NonStruct",
@@ -626,90 +740,118 @@ func TestPopulate(t *testing.T) {
 			new(string),
 			false,
 			"non-struct type: you should pass a pointer to a struct type",
-			&flags{},
+			&Flags{},
 		},
 		{
 			"NonPointer",
 			[]string{"app"},
-			flags{},
+			Flags{},
 			false,
 			"non-pointer type: you should pass a pointer to a struct type",
-			&flags{},
+			&Flags{},
 		},
 		{
 			"FromDefaults",
 			[]string{"app"},
-			&flags{
-				unexported:    "internal",
-				String:        "default",
-				Bool:          false,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "internal",
+				String:     "default",
+				Bool:       false,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 			false,
 			"",
-			&flags{
-				unexported:    "internal",
-				String:        "default",
-				Bool:          false,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "internal",
+				String:     "default",
+				Bool:       false,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -749,43 +891,57 @@ func TestPopulate(t *testing.T) {
 				"-duration-slice", "90m,120m",
 				"-url-slice", "service-1:8080,service-2:8080",
 			},
-			&flags{},
+			&Flags{},
 			false,
 			"",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -825,43 +981,57 @@ func TestPopulate(t *testing.T) {
 				"--duration-slice", "90m,120m",
 				"--url-slice", "service-1:8080,service-2:8080",
 			},
-			&flags{},
+			&Flags{},
 			false,
 			"",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -901,43 +1071,57 @@ func TestPopulate(t *testing.T) {
 				"-duration-slice=90m,120m",
 				"-url-slice=service-1:8080,service-2:8080",
 			},
-			&flags{},
+			&Flags{},
 			false,
 			"",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -977,43 +1161,57 @@ func TestPopulate(t *testing.T) {
 				"--duration-slice=90m,120m",
 				"--url-slice=service-1:8080,service-2:8080",
 			},
-			&flags{},
+			&Flags{},
 			false,
 			"",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -1022,10 +1220,10 @@ func TestPopulate(t *testing.T) {
 				"app",
 				"-int", "invalid",
 			},
-			&flags{},
+			&Flags{},
 			false,
 			`strconv.ParseInt: parsing "invalid": invalid syntax`,
-			&flags{},
+			&Flags{},
 		},
 		{
 			"ContinueOnError",
@@ -1062,10 +1260,10 @@ func TestPopulate(t *testing.T) {
 				"-duration-slice", "invalid",
 				"-url-slice", ":invalid",
 			},
-			&flags{},
+			&Flags{},
 			true,
 			"",
-			&flags{},
+			&Flags{},
 		},
 	}
 
@@ -1109,7 +1307,7 @@ func TestRegisterFlags(t *testing.T) {
 		continueOnError    bool
 		expectedError      error
 		expectedParseError string
-		expected           *flags
+		expected           *Flags
 	}{
 		{
 			"NonStruct",
@@ -1118,110 +1316,138 @@ func TestRegisterFlags(t *testing.T) {
 			new(string),
 			false,
 			errors.New("non-struct type: you should pass a pointer to a struct type"), "",
-			&flags{},
+			&Flags{},
 		},
 		{
 			"NonPointer",
 			[]string{"app"},
 			new(flag.FlagSet),
-			flags{},
+			Flags{},
 			false,
 			errors.New("non-pointer type: you should pass a pointer to a struct type"), "",
-			&flags{},
+			&Flags{},
 		},
 		{
 			"FlagRegistered_StopOnError",
 			[]string{"app"},
 			fs,
-			&flags{},
+			&Flags{},
 			false,
 			errors.New("flag already registered: string"), "",
-			&flags{},
+			&Flags{},
 		},
 		{
 			"FlagRegistered_ContinueOnError",
 			[]string{"app"},
 			fs,
-			&flags{},
+			&Flags{},
 			true,
 			nil, "",
-			&flags{},
+			&Flags{},
 		},
 		{
 			"FromDefaults",
 			[]string{"app"},
 			new(flag.FlagSet),
-			&flags{
-				unexported:    "internal",
-				String:        "default",
-				Bool:          false,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "internal",
+				String:     "default",
+				Bool:       false,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 			false,
 			nil, "",
-			&flags{
-				unexported:    "internal",
-				String:        "default",
-				Bool:          false,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "internal",
+				String:     "default",
+				Bool:       false,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -1262,43 +1488,57 @@ func TestRegisterFlags(t *testing.T) {
 				"-url-slice", "service-1:8080,service-2:8080",
 			},
 			new(flag.FlagSet),
-			&flags{},
+			&Flags{},
 			false,
 			nil, "",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -1339,43 +1579,57 @@ func TestRegisterFlags(t *testing.T) {
 				"--url-slice", "service-1:8080,service-2:8080",
 			},
 			new(flag.FlagSet),
-			&flags{},
+			&Flags{},
 			false,
 			nil, "",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -1416,43 +1670,57 @@ func TestRegisterFlags(t *testing.T) {
 				"-url-slice=service-1:8080,service-2:8080",
 			},
 			new(flag.FlagSet),
-			&flags{},
+			&Flags{},
 			false,
 			nil, "",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -1493,43 +1761,57 @@ func TestRegisterFlags(t *testing.T) {
 				"--url-slice=service-1:8080,service-2:8080",
 			},
 			new(flag.FlagSet),
-			&flags{},
+			&Flags{},
 			false,
 			nil, "",
-			&flags{
-				unexported:    "",
-				String:        "content",
-				Bool:          true,
-				Float32:       3.1415,
-				Float64:       3.14159265359,
-				Int:           -2147483648,
-				Int8:          -128,
-				Int16:         -32768,
-				Int32:         -2147483648,
-				Int64:         -9223372036854775808,
-				Uint:          4294967295,
-				Uint8:         255,
-				Uint16:        65535,
-				Uint32:        4294967295,
-				Uint64:        18446744073709551615,
-				Duration:      d90m,
-				URL:           *url1,
-				StringSlice:   []string{"milad", "mona"},
-				BoolSlice:     []bool{false, true},
-				Float32Slice:  []float32{3.1415, 2.7182},
-				Float64Slice:  []float64{3.14159265359, 2.71828182845},
-				IntSlice:      []int{-2147483648, 2147483647},
-				Int8Slice:     []int8{-128, 127},
-				Int16Slice:    []int16{-32768, 32767},
-				Int32Slice:    []int32{-2147483648, 2147483647},
-				Int64Slice:    []int64{-9223372036854775808, 9223372036854775807},
-				UintSlice:     []uint{0, 4294967295},
-				Uint8Slice:    []uint8{0, 255},
-				Uint16Slice:   []uint16{0, 65535},
-				Uint32Slice:   []uint32{0, 4294967295},
-				Uint64Slice:   []uint64{0, 18446744073709551615},
-				DurationSlice: []time.Duration{d90m, d120m},
-				URLSlice:      []url.URL{*url1, *url2},
+			&Flags{
+				unexported: "",
+				String:     "content",
+				Bool:       true,
+				Floats: Floats{
+					Float32: 3.1415,
+					Float64: 3.14159265359,
+				},
+				Ints: Ints{
+					Int:   -2147483648,
+					Int8:  -128,
+					Int16: -32768,
+					Int32: -2147483648,
+					Int64: -9223372036854775808,
+				},
+				Uints: Uints{
+					Uint:   4294967295,
+					Uint8:  255,
+					Uint16: 65535,
+					Uint32: 4294967295,
+					Uint64: 18446744073709551615,
+				},
+				Duration: d90m,
+				URL:      *url1,
+				SliceGroup: SliceGroup{
+					StringSlice: []string{"milad", "mona"},
+					BoolSlice:   []bool{false, true},
+					FloatSlices: FloatSlices{
+						Float32Slice: []float32{3.1415, 2.7182},
+						Float64Slice: []float64{3.14159265359, 2.71828182845},
+					},
+					IntSlices: IntSlices{
+						IntSlice:   []int{-2147483648, 2147483647},
+						Int8Slice:  []int8{-128, 127},
+						Int16Slice: []int16{-32768, 32767},
+						Int32Slice: []int32{-2147483648, 2147483647},
+						Int64Slice: []int64{-9223372036854775808, 9223372036854775807},
+					},
+					UintSlices: UintSlices{
+						UintSlice:   []uint{0, 4294967295},
+						Uint8Slice:  []uint8{0, 255},
+						Uint16Slice: []uint16{0, 65535},
+						Uint32Slice: []uint32{0, 4294967295},
+						Uint64Slice: []uint64{0, 18446744073709551615},
+					},
+					DurationSlice: []time.Duration{d90m, d120m},
+					URLSlice:      []url.URL{*url1, *url2},
+				},
 			},
 		},
 		{
@@ -1539,10 +1821,10 @@ func TestRegisterFlags(t *testing.T) {
 				"-int", "invalid",
 			},
 			new(flag.FlagSet),
-			&flags{},
+			&Flags{},
 			false,
 			nil, `invalid value "invalid" for flag -int: strconv.ParseInt: parsing "invalid": invalid syntax`,
-			&flags{},
+			&Flags{},
 		},
 		{
 			"ContinueOnError",
@@ -1579,10 +1861,10 @@ func TestRegisterFlags(t *testing.T) {
 				"-url-slice", ":invalid",
 			},
 			new(flag.FlagSet),
-			&flags{},
+			&Flags{},
 			true,
 			nil, "",
-			&flags{},
+			&Flags{},
 		},
 	}
 
