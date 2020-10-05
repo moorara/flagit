@@ -1,4 +1,6 @@
-// Package flagit TODO:
+// Package flagit adds support for a new struct tag: flag.
+// You can tag your struct fields with the flag tag and parse command-line arguments into your struct fields.
+// Nested structs are also supported. You can either parse the command-line arguments using this package or the built-in flag package.
 package flagit
 
 import (

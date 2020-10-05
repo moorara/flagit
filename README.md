@@ -12,7 +12,65 @@ You can then read the values for those fields from the command-line arguments an
 ## Quick Start
 
 ```go
+package main
+
+import (
+  "fmt"
+  "net/url"
+  "time"
+
+  "github.com/moorara/flagit"
+)
+
+// Spec is a struct for mapping its fields to command-line flags.
+type Spec struct {
+  // Flag fields
+  Verbose bool `flag:"verbose"`
+
+  // Nested fields
+  Options struct {
+    Port     uint16 `flag:"port"`
+    LogLevel string `flag:"log-level"`
+  } `flag:""`
+
+  // Nested fields with prefix
+  Config struct {
+    Timeout   time.Duration `flag:"timeout"`
+    Endpoints []url.URL     `flag:"endpoints"`
+  } `flag:"config-"`
+}
+
+func main() {
+  spec := new(Spec)
+
+  if err := flagit.Populate(spec, false); err != nil {
+    panic(err)
+  }
+
+  fmt.Printf("%+v\n", spec)
+}
 ```
+
+## Examples
+
+You can find more examples of using `flagit` [here](./examples).
+
+## Documentation
+
+### Supported Types
+
+  - `bool`, `[]bool`
+  - `string`, `[]string`
+  - `float32`, `float64`
+  - `[]float32`, `[]float64`
+  - `int`, `int8`, `int16`, `int32`, `int64`
+  - `[]int`, `[]int8`, `[]int16`, `[]int32`, `[]int64`
+  - `uint`, `uint8`, `uint16`, `uint32`, `uint64`
+  - `[]uint`, `[]uint8`, `[]uint16`, `[]uint32`, `[]uint64`
+  - `time.Duration`, `[]time.Duration`
+  - `url.URL`, `[]url.URL`
+
+Nested structs are also supported. For a nested struct field, it should also be tagged with `flag:""` or `flag:"prefix"`.
 
 
 [godoc-url]: https://pkg.go.dev/github.com/moorara/flagit
