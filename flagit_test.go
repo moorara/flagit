@@ -56,25 +56,25 @@ type (
 	}
 
 	SliceGroup struct {
-		StringSlice   []string        `flag:"string-slice"`
-		BoolSlice     []bool          `flag:"bool-slice"`
+		StringSlice   []string        `flag:"string-slice,the help text for the string-slice flag"`
+		BoolSlice     []bool          `flag:"bool-slice,the help text for the bool-slice flag"`
 		FloatSlices   FloatSlices     `flag:""`
 		IntSlices     IntSlices       `flag:""`
 		UintSlices    UintSlices      `flag:""`
-		DurationSlice []time.Duration `flag:"duration-slice"`
-		URLSlice      []url.URL       `flag:"url-slice"`
+		DurationSlice []time.Duration `flag:"duration-slice,the help text for the duration-slice flag"`
+		URLSlice      []url.URL       `flag:"url-slice,the help text for the url-slice flag"`
 	}
 
 	Flags struct {
 		unexported  string
 		WithoutFlag string
-		String      string        `flag:"string"`
-		Bool        bool          `flag:"bool"`
+		String      string        `flag:"string,the help text for the string flag"`
+		Bool        bool          `flag:"bool,the help text for the bool flag"`
 		Floats      Floats        `flag:""`
 		Ints        Ints          `flag:""`
 		Uints       Uints         `flag:""`
-		Duration    time.Duration `flag:"duration"`
-		URL         url.URL       `flag:"url"`
+		Duration    time.Duration `flag:"duration,the help text for the duration flag"`
+		URL         url.URL       `flag:"url,the help text for the url flag"`
 		SliceGroup  SliceGroup    `flag:""`
 	}
 )
@@ -96,9 +96,9 @@ func getFields(vStruct reflect.Value, handle func(f fieldInfo)) {
 		}
 
 		handle(fieldInfo{
-			value:   v,
-			name:    f.Name,
-			listSep: ",",
+			value: v,
+			name:  f.Name,
+			sep:   ",",
 		})
 	}
 }
@@ -137,6 +137,33 @@ func TestValidateStruct(t *testing.T) {
 				assert.Empty(t, v)
 				assert.Equal(t, tc.expectedError, err)
 			}
+		})
+	}
+}
+
+func TestIsStructSupported(t *testing.T) {
+	tests := []struct {
+		name     string
+		s        interface{}
+		expected bool
+	}{
+		{
+			name:     "Supported",
+			s:        url.URL{},
+			expected: true,
+		},
+		{
+			name:     "NotSupported",
+			s:        struct{}{},
+			expected: false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			tStruct := reflect.TypeOf(tc.s)
+
+			assert.Equal(t, tc.expected, isStructSupported(tStruct))
 		})
 	}
 }
@@ -707,7 +734,7 @@ func TestIterateOnFields(t *testing.T) {
 			err = iterateOnFields("", vStruct, tc.continueOnError, func(f fieldInfo) error {
 				fieldNames = append(fieldNames, f.name)
 				flagNames = append(flagNames, f.flag)
-				listSeps = append(listSeps, f.listSep)
+				listSeps = append(listSeps, f.sep)
 				return nil
 			})
 
