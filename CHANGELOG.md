@@ -1,6 +1,20 @@
 # Changelog
 
-## [v0.1.0](https://github.com/moorara/flagit/tree/v0.1.0) (2020-10-04)
+## [v0.1.1](https://github.com/moorara/flagit/tree/v0.1.1) (2020-10-05)
+
+[Full Changelog](https://github.com/moorara/flagit/compare/v0.1.0...v0.1.1)
+
+**Closed issues:**
+
+- Remove the need for flag tag for nested structs [\#10](https://github.com/moorara/flagit/issues/10)
+- Add support for flag description/help text [\#8](https://github.com/moorara/flagit/issues/8)
+
+**Merged pull requests:**
+
+- Remove the need for flag tag for nested structs [\#11](https://github.com/moorara/flagit/pull/11) ([moorara](https://github.com/moorara))
+- Add support for help text [\#9](https://github.com/moorara/flagit/pull/9) ([moorara](https://github.com/moorara))
+
+## [v0.1.0](https://github.com/moorara/flagit/tree/v0.1.0) (2020-10-05)
 
 [Full Changelog](https://github.com/moorara/flagit/compare/445043834a88b72efc476715a73e69258a65ddb1...v0.1.0)
 
