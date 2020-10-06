@@ -24,10 +24,11 @@ var (
 )
 
 type fieldInfo struct {
-	value   reflect.Value
-	name    string
-	flag    string
-	listSep string
+	value reflect.Value
+	name  string
+	flag  string
+	help  string
+	sep   string
 }
 
 // flagValue implements the flag.Value interface.
@@ -73,12 +74,16 @@ func validateStruct(s interface{}) (reflect.Value, error) {
 	return v, nil
 }
 
+func isStructSupported(t reflect.Type) bool {
+	return (t.PkgPath() == "net/url" && t.Name() == "URL")
+}
+
 func isNestedStruct(t reflect.Type) bool {
 	if t.Kind() != reflect.Struct {
 		return false
 	}
 
-	if t.PkgPath() == "net/url" && t.Name() == "URL" {
+	if isStructSupported(t) {
 		return false
 	}
 
@@ -100,9 +105,7 @@ func isTypeSupported(t reflect.Type) bool {
 	case reflect.Slice:
 		return isTypeSupported(t.Elem())
 	case reflect.Struct:
-		if t.PkgPath() == "net/url" && t.Name() == "URL" {
-			return true
-		}
+		return isStructSupported(t)
 	}
 
 	return false
@@ -166,7 +169,7 @@ func setFieldValue(f fieldInfo, val string) (bool, error) {
 
 	case reflect.Slice:
 		tSlice := reflect.TypeOf(f.value.Interface()).Elem()
-		vals := strings.Split(val, f.listSep)
+		vals := strings.Split(val, f.sep)
 
 		switch tSlice.Kind() {
 		case reflect.String:
@@ -228,9 +231,18 @@ func iterateOnFields(prefix string, vStruct reflect.Value, continueOnError bool,
 		}
 
 		// `flag:"..."`
-		flagName := f.Tag.Get(flagTag)
-		if flagName == "" {
+		val := f.Tag.Get(flagTag)
+		if val == "" {
 			continue
+		}
+
+		var flagName, flagHelp string
+		if strings.Contains(val, ",") {
+			subs := strings.Split(val, ",")
+			flagName = subs[0]
+			flagHelp = subs[1]
+		} else {
+			flagName = val
 		}
 
 		// Apply prefix
@@ -245,16 +257,17 @@ func iterateOnFields(prefix string, vStruct reflect.Value, continueOnError bool,
 		}
 
 		// `sep:"..."`
-		listSep := f.Tag.Get(sepTag)
-		if listSep == "" {
-			listSep = ","
+		sep := f.Tag.Get(sepTag)
+		if sep == "" {
+			sep = ","
 		}
 
 		err := handle(fieldInfo{
-			value:   v,
-			name:    f.Name,
-			flag:    flagName,
-			listSep: listSep,
+			value: v,
+			name:  f.Name,
+			flag:  flagName,
+			help:  flagHelp,
+			sep:   sep,
 		})
 
 		if err != nil {
@@ -308,32 +321,25 @@ func RegisterFlags(fs *flag.FlagSet, s interface{}, continueOnError bool) error 
 
 		// Create usage string
 		var usage string
+
+		if f.help != "" {
+			usage = f.help + "\n"
+		}
+
 		switch f.value.Kind() {
-		case reflect.Bool:
-			usage = fmt.Sprintf(
-				"%-15s %s\n%-15s %v",
+		case reflect.Slice:
+			usage += fmt.Sprintf("%-15s []%s\n%-15s %v\n%-15s %s",
+				"data type:", reflect.TypeOf(f.value.Interface()).Elem(),
+				"default value:", f.value.Interface(),
+				"separator:", f.sep,
+			)
+		case reflect.Struct:
+			usage += fmt.Sprintf("%-15s %s\n%-15s %+v",
 				"data type:", f.value.Type(),
 				"default value:", f.value.Interface(),
 			)
-		case reflect.Slice:
-			usage = fmt.Sprintf(
-				"%-15s []%s\n%-15s %v\n%-15s %s",
-				"data type:", reflect.TypeOf(f.value.Interface()).Elem(),
-				"default value:", "[]",
-				"separator:", f.listSep,
-			)
-		case reflect.Struct:
-			t := f.value.Type()
-			if t.PkgPath() == "net/url" && t.Name() == "URL" {
-				usage = fmt.Sprintf(
-					"%-15s %s\n%-15s %v",
-					"data type:", f.value.Type(),
-					"default value:", "",
-				)
-			}
 		default:
-			usage = fmt.Sprintf(
-				"%-15s %s\n%-15s %v",
+			usage += fmt.Sprintf("%-15s %s\n%-15s %v",
 				"data type:", f.value.Type(),
 				"default value:", f.value.Interface(),
 			)
