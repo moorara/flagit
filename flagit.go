@@ -237,12 +237,12 @@ func iterateOnFields(prefix string, vStruct reflect.Value, continueOnError bool,
 		}
 
 		var flagName, flagHelp string
-		if strings.Index(val, ",") == -1 {
-			flagName = val
-		} else {
+		if strings.Contains(val, ",") {
 			subs := strings.Split(val, ",")
 			flagName = subs[0]
 			flagHelp = subs[1]
+		} else {
+			flagName = val
 		}
 
 		// Apply prefix
