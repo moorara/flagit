@@ -17,7 +17,7 @@ type Spec struct {
 	Options struct {
 		Port     uint16 `flag:"port"`
 		LogLevel string `flag:"log-level"`
-	} `flag:""`
+	}
 
 	// Nested fields with prefix
 	Config struct {

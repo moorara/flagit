@@ -217,11 +217,9 @@ func iterateOnFields(prefix string, vStruct reflect.Value, continueOnError bool,
 
 		// Recursively, iterate on nested structs with flag tag
 		if isNestedStruct(t) {
-			if val, ok := f.Tag.Lookup(flagTag); ok {
-				newPrefix := prefix + val
-				if err := iterateOnFields(newPrefix, v, continueOnError, handle); err != nil {
-					return err
-				}
+			newPrefix := prefix + f.Tag.Get(flagTag)
+			if err := iterateOnFields(newPrefix, v, continueOnError, handle); err != nil {
+				return err
 			}
 		}
 
