@@ -19,7 +19,7 @@ type Spec struct {
 	Options struct {
 		Port     uint16 `flag:"port,the port number (1024-65535)"`
 		LogLevel string `flag:"log-level,the logging level (debug|info|warn|error)"`
-	} `flag:""`
+	}
 
 	// Nested fields with prefix
 	Config struct {
