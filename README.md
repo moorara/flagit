@@ -71,7 +71,7 @@ You can find more examples of using `flagit` [here](./examples).
   - `url.URL`, `[]url.URL`
   - `regexp.Regexp`, `[]regexp.Regexp`
 
-Nested structs are also supported. For a nested struct field, it should also be tagged with `flag:""` or `flag:"prefix"`.
+Nested structs are also supported.
 
 
 [godoc-url]: https://pkg.go.dev/github.com/moorara/flagit
