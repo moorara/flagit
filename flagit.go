@@ -75,7 +75,8 @@ func validateStruct(s interface{}) (reflect.Value, error) {
 }
 
 func isStructSupported(t reflect.Type) bool {
-	return (t.PkgPath() == "net/url" && t.Name() == "URL")
+	return (t.PkgPath() == "net/url" && t.Name() == "URL") ||
+		(t.PkgPath() == "regexp" && t.Name() == "Regexp")
 }
 
 func isNestedStruct(t reflect.Type) bool {
@@ -201,7 +202,7 @@ func setFieldValue(f fieldInfo, val string) (bool, error) {
 		case reflect.Uint64:
 			return setUint64Slice(f.value, vals)
 		case reflect.Struct:
-			return setURLSlice(f.value, vals)
+			return setStructSlice(f.value, vals)
 		}
 	}
 

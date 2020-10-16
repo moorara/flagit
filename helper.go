@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"reflect"
+	"regexp"
 	"strconv"
 	"time"
 )
@@ -228,7 +229,22 @@ func setStruct(v reflect.Value, val string) (bool, error) {
 			return false, nil
 		}
 
+		// u is a pointer
 		v.Set(reflect.ValueOf(u).Elem())
+		return true, nil
+	} else if t.PkgPath() == "regexp" && t.Name() == "Regexp" {
+		r, err := regexp.CompilePOSIX(val)
+		if err != nil {
+			return false, err
+		}
+
+		// r is a pointer
+		if reflect.DeepEqual(v.Interface(), *r) {
+			return false, nil
+		}
+
+		// r is a pointer
+		v.Set(reflect.ValueOf(r).Elem())
 		return true, nil
 	}
 
@@ -514,7 +530,7 @@ func setUint64Slice(v reflect.Value, vals []string) (bool, error) {
 	return true, nil
 }
 
-func setURLSlice(v reflect.Value, vals []string) (bool, error) {
+func setStructSlice(v reflect.Value, vals []string) (bool, error) {
 	t := reflect.TypeOf(v.Interface()).Elem()
 
 	if t.PkgPath() == "net/url" && t.Name() == "URL" {
@@ -534,6 +550,24 @@ func setURLSlice(v reflect.Value, vals []string) (bool, error) {
 		}
 
 		v.Set(reflect.ValueOf(urls))
+		return true, nil
+	} else if t.PkgPath() == "regexp" && t.Name() == "Regexp" {
+		regexps := []regexp.Regexp{}
+		for _, val := range vals {
+			r, err := regexp.CompilePOSIX(val)
+			if err != nil {
+				return false, err
+			}
+
+			regexps = append(regexps, *r)
+		}
+
+		// []regexp.Regexp
+		if reflect.DeepEqual(v.Interface(), regexps) {
+			return false, nil
+		}
+
+		v.Set(reflect.ValueOf(regexps))
 		return true, nil
 	}
 
