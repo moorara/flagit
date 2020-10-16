@@ -1,6 +1,15 @@
 # Changelog
 
-## [v0.1.1](https://github.com/moorara/flagit/tree/v0.1.1) (2020-10-05)
+## [v0.1.2](https://github.com/moorara/flagit/tree/v0.1.2) (2020-10-16)
+
+[Full Changelog](https://github.com/moorara/flagit/compare/v0.1.1...v0.1.2)
+
+**Merged pull requests:**
+
+- Update README.md [\#13](https://github.com/moorara/flagit/pull/13) ([moorara](https://github.com/moorara))
+- Add support for Regexp type [\#12](https://github.com/moorara/flagit/pull/12) ([moorara](https://github.com/moorara))
+
+## [v0.1.1](https://github.com/moorara/flagit/tree/v0.1.1) (2020-10-06)
 
 [Full Changelog](https://github.com/moorara/flagit/compare/v0.1.0...v0.1.1)
 
