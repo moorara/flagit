@@ -69,6 +69,7 @@ You can find more examples of using `flagit` [here](./examples).
   - `[]uint`, `[]uint8`, `[]uint16`, `[]uint32`, `[]uint64`
   - `time.Duration`, `[]time.Duration`
   - `url.URL`, `[]url.URL`
+  - `regexp.Regexp`, `[]regexp.Regexp`
 
 Nested structs are also supported. For a nested struct field, it should also be tagged with `flag:""` or `flag:"prefix"`.
 

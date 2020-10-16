@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
@@ -63,6 +64,7 @@ type (
 		UintSlices    UintSlices      `flag:""`
 		DurationSlice []time.Duration `flag:"duration-slice,the help text for the duration-slice flag"`
 		URLSlice      []url.URL       `flag:"url-slice,the help text for the url-slice flag"`
+		RegexpSlice   []regexp.Regexp `flag:"regexp-slice,the help text for the regexp-slice flag"`
 	}
 
 	Flags struct {
@@ -75,6 +77,7 @@ type (
 		Uints       Uints         `flag:""`
 		Duration    time.Duration `flag:"duration,the help text for the duration flag"`
 		URL         url.URL       `flag:"url,the help text for the url flag"`
+		Regexp      regexp.Regexp `flag:"regexp,the help text for the regexp flag"`
 		SliceGroup  SliceGroup    `flag:""`
 	}
 )
@@ -148,14 +151,19 @@ func TestIsStructSupported(t *testing.T) {
 		expected bool
 	}{
 		{
-			name:     "Supported",
+			name:     "NotSupported",
+			s:        struct{}{},
+			expected: false,
+		},
+		{
+			name:     "URL",
 			s:        url.URL{},
 			expected: true,
 		},
 		{
-			name:     "NotSupported",
-			s:        struct{}{},
-			expected: false,
+			name:     "Regexp",
+			s:        regexp.Regexp{},
+			expected: true,
 		},
 	}
 
@@ -170,9 +178,10 @@ func TestIsStructSupported(t *testing.T) {
 
 func TestIsNestedStruct(t *testing.T) {
 	vStruct := reflect.ValueOf(struct {
-		Int   int
-		URL   url.URL
-		Group struct {
+		Int    int
+		URL    url.URL
+		Regexp regexp.Regexp
+		Group  struct {
 			String string
 		}
 	}{})
@@ -183,6 +192,9 @@ func TestIsNestedStruct(t *testing.T) {
 	vURL := vStruct.FieldByName("URL")
 	assert.False(t, isNestedStruct(vURL.Type()))
 
+	vRegexp := vStruct.FieldByName("Regexp")
+	assert.False(t, isNestedStruct(vRegexp.Type()))
+
 	vGroup := vStruct.FieldByName("Group")
 	assert.True(t, isNestedStruct(vGroup.Type()))
 }
@@ -190,6 +202,9 @@ func TestIsNestedStruct(t *testing.T) {
 func TestIsTypeSupported(t *testing.T) {
 	url1, _ := url.Parse("service-1:8080")
 	url2, _ := url.Parse("service-2:8080")
+
+	re1 := regexp.MustCompilePOSIX("[:digit:]")
+	re2 := regexp.MustCompilePOSIX("[:alpha:]")
 
 	tests := []struct {
 		name     string
@@ -212,6 +227,7 @@ func TestIsTypeSupported(t *testing.T) {
 		{"Uint32", uint32(4294967295), true},
 		{"Uint64", uint64(18446744073709551615), true},
 		{"URL", *url1, true},
+		{"Regexp", *re1, true},
 		{"StringSlice", []string{"foo", "bar"}, true},
 		{"BoolSlice", []bool{true, false}, true},
 		{"Float32Slice", []float32{3.1415, 2.7182}, true},
@@ -228,6 +244,7 @@ func TestIsTypeSupported(t *testing.T) {
 		{"Uint32Slice", []uint32{}, true},
 		{"Uint64Slice", []uint64{}, true},
 		{"URLSlice", []url.URL{*url1, *url2}, true},
+		{"RegexpSlice", []regexp.Regexp{*re1, *re2}, true},
 		{"Unsupported", time.Now(), false},
 	}
 
@@ -300,6 +317,11 @@ func TestSetFieldValue(t *testing.T) {
 	url3, _ := url.Parse("service-3:8080")
 	url4, _ := url.Parse("service-4:8080")
 
+	re1 := regexp.MustCompilePOSIX("[:digit:]")
+	re2 := regexp.MustCompilePOSIX("[:alpha:]")
+	re3 := regexp.MustCompilePOSIX("[:alnum:]")
+	re4 := regexp.MustCompilePOSIX("[:word:]")
+
 	tests := []struct {
 		name            string
 		s               *Flags
@@ -327,6 +349,7 @@ func TestSetFieldValue(t *testing.T) {
 				"Uint64":        "invalid",
 				"Duration":      "invalid",
 				"URL":           ":invalid",
+				"Regexp":        "[:invalid",
 				"BoolSlice":     "invalid",
 				"Float32Slice":  "invalid",
 				"Float64Slice":  "invalid",
@@ -342,6 +365,7 @@ func TestSetFieldValue(t *testing.T) {
 				"Uint64Slice":   "invalid",
 				"DurationSlice": "invalid",
 				"URLSlice":      ":invalid",
+				"RegexpSlice":   "[:invalid",
 			},
 			false,
 			true,
@@ -372,6 +396,7 @@ func TestSetFieldValue(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -395,6 +420,7 @@ func TestSetFieldValue(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 			map[string]string{
@@ -414,6 +440,7 @@ func TestSetFieldValue(t *testing.T) {
 				"Uint64":        "9223372036854775808",
 				"Duration":      "4h",
 				"URL":           "service-3:8080",
+				"Regexp":        "[:alnum:]",
 				"StringSlice":   "mona,milad",
 				"BoolSlice":     "true,false",
 				"Float32Slice":  "2.7182,3.1415",
@@ -430,6 +457,7 @@ func TestSetFieldValue(t *testing.T) {
 				"Uint64Slice":   "18446744073709551615,0",
 				"DurationSlice": "4h,8h",
 				"URLSlice":      "service-3:8080,service-4:8080",
+				"RegexpSlice":   "[:alnum:],[:word:]",
 			},
 			true,
 			false,
@@ -456,6 +484,7 @@ func TestSetFieldValue(t *testing.T) {
 				},
 				Duration: d4h,
 				URL:      *url3,
+				Regexp:   *re3,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"mona", "milad"},
 					BoolSlice:   []bool{true, false},
@@ -479,6 +508,7 @@ func TestSetFieldValue(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d4h, d8h},
 					URLSlice:      []url.URL{*url3, *url4},
+					RegexpSlice:   []regexp.Regexp{*re3, *re4},
 				},
 			},
 		},
@@ -507,6 +537,7 @@ func TestSetFieldValue(t *testing.T) {
 				},
 				Duration: d4h,
 				URL:      *url3,
+				Regexp:   *re3,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"mona", "milad"},
 					BoolSlice:   []bool{true, false},
@@ -530,6 +561,7 @@ func TestSetFieldValue(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d4h, d8h},
 					URLSlice:      []url.URL{*url3, *url4},
+					RegexpSlice:   []regexp.Regexp{*re3, *re4},
 				},
 			},
 			map[string]string{
@@ -549,6 +581,7 @@ func TestSetFieldValue(t *testing.T) {
 				"Uint64":        "9223372036854775808",
 				"Duration":      "4h",
 				"URL":           "service-3:8080",
+				"Regexp":        "[:alnum:]",
 				"StringSlice":   "mona,milad",
 				"BoolSlice":     "true,false",
 				"Float32Slice":  "2.7182,3.1415",
@@ -565,6 +598,7 @@ func TestSetFieldValue(t *testing.T) {
 				"Uint64Slice":   "18446744073709551615,0",
 				"DurationSlice": "4h,8h",
 				"URLSlice":      "service-3:8080,service-4:8080",
+				"RegexpSlice":   "[:alnum:],[:word:]",
 			},
 			false,
 			false,
@@ -591,6 +625,7 @@ func TestSetFieldValue(t *testing.T) {
 				},
 				Duration: d4h,
 				URL:      *url3,
+				Regexp:   *re3,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"mona", "milad"},
 					BoolSlice:   []bool{true, false},
@@ -614,6 +649,7 @@ func TestSetFieldValue(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d4h, d8h},
 					URLSlice:      []url.URL{*url3, *url4},
+					RegexpSlice:   []regexp.Regexp{*re3, *re4},
 				},
 			},
 		},
@@ -683,13 +719,13 @@ func TestIterateOnFields(t *testing.T) {
 				"Float32", "Float64",
 				"Int", "Int8", "Int16", "Int32", "Int64",
 				"Uint", "Uint8", "Uint16", "Uint32", "Uint64",
-				"Duration", "URL",
+				"Duration", "URL", "Regexp",
 				"StringSlice",
 				"BoolSlice",
 				"Float32Slice", "Float64Slice",
 				"IntSlice", "Int8Slice", "Int16Slice", "Int32Slice", "Int64Slice",
 				"UintSlice", "Uint8Slice", "Uint16Slice", "Uint32Slice", "Uint64Slice",
-				"DurationSlice", "URLSlice",
+				"DurationSlice", "URLSlice", "RegexpSlice",
 			},
 			expectedFlagNames: []string{
 				"string",
@@ -697,13 +733,13 @@ func TestIterateOnFields(t *testing.T) {
 				"float32", "float64",
 				"int", "int8", "int16", "int32", "int64",
 				"uint", "uint8", "uint16", "uint32", "uint64",
-				"duration", "url",
+				"duration", "url", "regexp",
 				"string-slice",
 				"bool-slice",
 				"float32-slice", "float64-slice",
 				"int-slice", "int8-slice", "int16-slice", "int32-slice", "int64-slice",
 				"uint-slice", "uint8-slice", "uint16-slice", "uint32-slice", "uint64-slice",
-				"duration-slice", "url-slice",
+				"duration-slice", "url-slice", "regexp-slice",
 			},
 			expectedListSeps: []string{
 				",",
@@ -711,13 +747,13 @@ func TestIterateOnFields(t *testing.T) {
 				",", ",",
 				",", ",", ",", ",", ",",
 				",", ",", ",", ",", ",",
-				",", ",",
+				",", ",", ",",
 				",",
 				",",
 				",", ",",
 				",", ",", ",", ",", ",",
 				",", ",", ",", ",", ",",
-				",", ",",
+				",", ",", ",",
 			},
 		},
 	}
@@ -752,6 +788,9 @@ func TestPopulate(t *testing.T) {
 
 	url1, _ := url.Parse("service-1:8080")
 	url2, _ := url.Parse("service-2:8080")
+
+	re1 := regexp.MustCompilePOSIX("[:digit:]")
+	re2 := regexp.MustCompilePOSIX("[:alpha:]")
 
 	tests := []struct {
 		name            string
@@ -804,6 +843,7 @@ func TestPopulate(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -827,6 +867,7 @@ func TestPopulate(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 			false,
@@ -855,6 +896,7 @@ func TestPopulate(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -878,6 +920,7 @@ func TestPopulate(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -901,6 +944,7 @@ func TestPopulate(t *testing.T) {
 				"-uint64", "18446744073709551615",
 				"-duration", "90m",
 				"-url", "service-1:8080",
+				"-regexp", "[:digit:]",
 				"-string-slice", "milad,mona",
 				"-bool-slice", "false,true",
 				"-float32-slice", "3.1415,2.7182",
@@ -917,6 +961,7 @@ func TestPopulate(t *testing.T) {
 				"-uint64-slice", "0,18446744073709551615",
 				"-duration-slice", "90m,120m",
 				"-url-slice", "service-1:8080,service-2:8080",
+				"-regexp-slice", "[:digit:],[:alpha:]",
 			},
 			&Flags{},
 			false,
@@ -945,6 +990,7 @@ func TestPopulate(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -968,6 +1014,7 @@ func TestPopulate(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -991,6 +1038,7 @@ func TestPopulate(t *testing.T) {
 				"--uint64", "18446744073709551615",
 				"--duration", "90m",
 				"--url", "service-1:8080",
+				"--regexp", "[:digit:]",
 				"--string-slice", "milad,mona",
 				"--bool-slice", "false,true",
 				"--float32-slice", "3.1415,2.7182",
@@ -1007,6 +1055,7 @@ func TestPopulate(t *testing.T) {
 				"--uint64-slice", "0,18446744073709551615",
 				"--duration-slice", "90m,120m",
 				"--url-slice", "service-1:8080,service-2:8080",
+				"--regexp-slice", "[:digit:],[:alpha:]",
 			},
 			&Flags{},
 			false,
@@ -1035,6 +1084,7 @@ func TestPopulate(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1058,6 +1108,7 @@ func TestPopulate(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1081,6 +1132,7 @@ func TestPopulate(t *testing.T) {
 				"-uint64=18446744073709551615",
 				"-duration=90m",
 				"-url=service-1:8080",
+				"-regexp=[:digit:]",
 				"-string-slice=milad,mona",
 				"-bool-slice=false,true",
 				"-float32-slice=3.1415,2.7182",
@@ -1097,6 +1149,7 @@ func TestPopulate(t *testing.T) {
 				"-uint64-slice=0,18446744073709551615",
 				"-duration-slice=90m,120m",
 				"-url-slice=service-1:8080,service-2:8080",
+				"-regexp-slice=[:digit:],[:alpha:]",
 			},
 			&Flags{},
 			false,
@@ -1125,6 +1178,7 @@ func TestPopulate(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1148,6 +1202,7 @@ func TestPopulate(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1171,6 +1226,7 @@ func TestPopulate(t *testing.T) {
 				"--uint64=18446744073709551615",
 				"--duration=90m",
 				"--url=service-1:8080",
+				"--regexp=[:digit:]",
 				"--string-slice=milad,mona",
 				"--bool-slice=false,true",
 				"--float32-slice=3.1415,2.7182",
@@ -1187,6 +1243,7 @@ func TestPopulate(t *testing.T) {
 				"--uint64-slice=0,18446744073709551615",
 				"--duration-slice=90m,120m",
 				"--url-slice=service-1:8080,service-2:8080",
+				"--regexp-slice=[:digit:],[:alpha:]",
 			},
 			&Flags{},
 			false,
@@ -1215,6 +1272,7 @@ func TestPopulate(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1238,6 +1296,7 @@ func TestPopulate(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1271,6 +1330,7 @@ func TestPopulate(t *testing.T) {
 				"-uint64", "invalid",
 				"-duration", "invalid",
 				"-url", ":invalid",
+				"-regexp", "[:invalid",
 				"-bool-slice", "invalid",
 				"-float32-slice", "invalid",
 				"-float64-slice", "invalid",
@@ -1286,6 +1346,7 @@ func TestPopulate(t *testing.T) {
 				"-uint64-slice", "invalid",
 				"-duration-slice", "invalid",
 				"-url-slice", ":invalid",
+				"-regexp-slice", "[:invalid",
 			},
 			&Flags{},
 			true,
@@ -1322,6 +1383,9 @@ func TestRegisterFlags(t *testing.T) {
 
 	url1, _ := url.Parse("service-1:8080")
 	url2, _ := url.Parse("service-2:8080")
+
+	re1 := regexp.MustCompilePOSIX("[:digit:]")
+	re2 := regexp.MustCompilePOSIX("[:alpha:]")
 
 	fs := flag.NewFlagSet("app", flag.ContinueOnError)
 	fs.String("string", "", "")
@@ -1400,6 +1464,7 @@ func TestRegisterFlags(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1423,6 +1488,7 @@ func TestRegisterFlags(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 			false,
@@ -1451,6 +1517,7 @@ func TestRegisterFlags(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1474,6 +1541,7 @@ func TestRegisterFlags(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1497,6 +1565,7 @@ func TestRegisterFlags(t *testing.T) {
 				"-uint64", "18446744073709551615",
 				"-duration", "90m",
 				"-url", "service-1:8080",
+				"-regexp", "[:digit:]",
 				"-string-slice", "milad,mona",
 				"-bool-slice", "false,true",
 				"-float32-slice", "3.1415,2.7182",
@@ -1513,6 +1582,7 @@ func TestRegisterFlags(t *testing.T) {
 				"-uint64-slice", "0,18446744073709551615",
 				"-duration-slice", "90m,120m",
 				"-url-slice", "service-1:8080,service-2:8080",
+				"-regexp-slice", "[:digit:],[:alpha:]",
 			},
 			new(flag.FlagSet),
 			&Flags{},
@@ -1542,6 +1612,7 @@ func TestRegisterFlags(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1565,6 +1636,7 @@ func TestRegisterFlags(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1588,6 +1660,7 @@ func TestRegisterFlags(t *testing.T) {
 				"--uint64", "18446744073709551615",
 				"--duration", "90m",
 				"--url", "service-1:8080",
+				"--regexp", "[:digit:]",
 				"--string-slice", "milad,mona",
 				"--bool-slice", "false,true",
 				"--float32-slice", "3.1415,2.7182",
@@ -1604,6 +1677,7 @@ func TestRegisterFlags(t *testing.T) {
 				"--uint64-slice", "0,18446744073709551615",
 				"--duration-slice", "90m,120m",
 				"--url-slice", "service-1:8080,service-2:8080",
+				"--regexp-slice", "[:digit:],[:alpha:]",
 			},
 			new(flag.FlagSet),
 			&Flags{},
@@ -1633,6 +1707,7 @@ func TestRegisterFlags(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1656,6 +1731,7 @@ func TestRegisterFlags(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1679,6 +1755,7 @@ func TestRegisterFlags(t *testing.T) {
 				"-uint64=18446744073709551615",
 				"-duration=90m",
 				"-url=service-1:8080",
+				"-regexp=[:digit:]",
 				"-string-slice=milad,mona",
 				"-bool-slice=false,true",
 				"-float32-slice=3.1415,2.7182",
@@ -1695,6 +1772,7 @@ func TestRegisterFlags(t *testing.T) {
 				"-uint64-slice=0,18446744073709551615",
 				"-duration-slice=90m,120m",
 				"-url-slice=service-1:8080,service-2:8080",
+				"-regexp-slice=[:digit:],[:alpha:]",
 			},
 			new(flag.FlagSet),
 			&Flags{},
@@ -1724,6 +1802,7 @@ func TestRegisterFlags(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1747,6 +1826,7 @@ func TestRegisterFlags(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1770,6 +1850,7 @@ func TestRegisterFlags(t *testing.T) {
 				"--uint64=18446744073709551615",
 				"--duration=90m",
 				"--url=service-1:8080",
+				"--regexp=[:digit:]",
 				"--string-slice=milad,mona",
 				"--bool-slice=false,true",
 				"--float32-slice=3.1415,2.7182",
@@ -1786,6 +1867,7 @@ func TestRegisterFlags(t *testing.T) {
 				"--uint64-slice=0,18446744073709551615",
 				"--duration-slice=90m,120m",
 				"--url-slice=service-1:8080,service-2:8080",
+				"--regexp-slice=[:digit:],[:alpha:]",
 			},
 			new(flag.FlagSet),
 			&Flags{},
@@ -1815,6 +1897,7 @@ func TestRegisterFlags(t *testing.T) {
 				},
 				Duration: d90m,
 				URL:      *url1,
+				Regexp:   *re1,
 				SliceGroup: SliceGroup{
 					StringSlice: []string{"milad", "mona"},
 					BoolSlice:   []bool{false, true},
@@ -1838,6 +1921,7 @@ func TestRegisterFlags(t *testing.T) {
 					},
 					DurationSlice: []time.Duration{d90m, d120m},
 					URLSlice:      []url.URL{*url1, *url2},
+					RegexpSlice:   []regexp.Regexp{*re1, *re2},
 				},
 			},
 		},
@@ -1871,6 +1955,7 @@ func TestRegisterFlags(t *testing.T) {
 				"-uint64", "invalid",
 				"-duration", "invalid",
 				"-url", ":invalid",
+				"-regexp", "[:invalid",
 				"-bool-slice", "invalid",
 				"-float32-slice", "invalid",
 				"-float64-slice", "invalid",
@@ -1886,6 +1971,7 @@ func TestRegisterFlags(t *testing.T) {
 				"-uint64-slice", "invalid",
 				"-duration-slice", "invalid",
 				"-url-slice", ":invalid",
+				"-regexp-slice", "[:invalid",
 			},
 			new(flag.FlagSet),
 			&Flags{},
