@@ -1,5 +1,18 @@
 # Changelog
 
+## [v0.1.3](https://github.com/moorara/flagit/tree/v0.1.3) (2020-10-18)
+
+[Full Changelog](https://github.com/moorara/flagit/compare/v0.1.2...v0.1.3)
+
+**Closed issues:**
+
+- Support Pointer Types [\#15](https://github.com/moorara/flagit/issues/15)
+
+**Merged pull requests:**
+
+- Support pointers [\#16](https://github.com/moorara/flagit/pull/16) ([moorara](https://github.com/moorara))
+- Refactor and fix a bug in tests [\#14](https://github.com/moorara/flagit/pull/14) ([moorara](https://github.com/moorara))
+
 ## [v0.1.2](https://github.com/moorara/flagit/tree/v0.1.2) (2020-10-16)
 
 [Full Changelog](https://github.com/moorara/flagit/compare/v0.1.1...v0.1.2)
