@@ -270,7 +270,7 @@ func Struct(v reflect.Value, val string) (bool, error) {
 
 // StringPtr sets a string pointer.
 func StringPtr(v reflect.Value, val string) (bool, error) {
-	if !v.IsZero() && reflect.DeepEqual(v.Elem().Interface(), val) {
+	if !v.IsZero() && v.Elem().String() == val {
 		return false, nil
 	}
 
