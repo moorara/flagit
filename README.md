@@ -59,18 +59,22 @@ You can find more examples of using `flagit` [here](./examples).
 
 ### Supported Types
 
-  - `bool`, `[]bool`
-  - `string`, `[]string`
+  - `string`, `*string`, `[]string`
+  - `bool`, `*bool`, `[]bool`
   - `float32`, `float64`
+  - `*float32`, `*float64`
   - `[]float32`, `[]float64`
   - `int`, `int8`, `int16`, `int32`, `int64`
+  - `*int`, `*int8`, `*int16`, `*int32`, `*int64`
   - `[]int`, `[]int8`, `[]int16`, `[]int32`, `[]int64`
   - `uint`, `uint8`, `uint16`, `uint32`, `uint64`
+  - `*uint`, `*uint8`, `*uint16`, `*uint32`, `*uint64`
   - `[]uint`, `[]uint8`, `[]uint16`, `[]uint32`, `[]uint64`
-  - `time.Duration`, `[]time.Duration`
-  - `url.URL`, `[]url.URL`
-  - `regexp.Regexp`, `[]regexp.Regexp`
+  - `url.URL`, `*url.URL`, `[]url.URL`
+  - `regexp.Regexp`, `*regexp.Regexp`, `[]regexp.Regexp`
+  - `time.Duration`, `*time.Duration`, `[]time.Duration`
 
+The supported syntax for Regexp is [POSIX Regular Expressions](https://en.wikibooks.org/wiki/Regular_Expressions/POSIX_Basic_Regular_Expressions).
 Nested structs are also supported.
 
 

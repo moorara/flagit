@@ -11,6 +11,8 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+
+	"github.com/moorara/flagit/set"
 )
 
 const (
@@ -33,8 +35,9 @@ type fieldInfo struct {
 
 // flagValue implements the flag.Value interface.
 type flagValue struct {
-	fieldInfo
 	continueOnError bool
+	value           reflect.Value
+	sep             string
 }
 
 // String is called for getting and printing the default value.
@@ -44,7 +47,7 @@ func (v flagValue) String() string {
 }
 
 func (v flagValue) Set(val string) error {
-	if _, err := setFieldValue(v.fieldInfo, val); err != nil {
+	if _, err := set.Value(v.value, v.sep, val); err != nil {
 		if v.continueOnError {
 			return nil
 		}
@@ -103,13 +106,13 @@ func isTypeSupported(t reflect.Type) bool {
 		return true
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return true
-	case reflect.Slice:
-		return isTypeSupported(t.Elem())
 	case reflect.Struct:
 		return isStructSupported(t)
+	case reflect.Ptr, reflect.Slice:
+		return isTypeSupported(t.Elem())
+	default:
+		return false
 	}
-
-	return false
 }
 
 func getFlagValue(flag string) string {
@@ -133,80 +136,6 @@ func getFlagValue(flag string) string {
 	}
 
 	return ""
-}
-
-func setFieldValue(f fieldInfo, val string) (bool, error) {
-	switch f.value.Kind() {
-	case reflect.String:
-		return setString(f.value, val)
-	case reflect.Bool:
-		return setBool(f.value, val)
-	case reflect.Float32:
-		return setFloat32(f.value, val)
-	case reflect.Float64:
-		return setFloat64(f.value, val)
-	case reflect.Int:
-		return setInt(f.value, val)
-	case reflect.Int8:
-		return setInt8(f.value, val)
-	case reflect.Int16:
-		return setInt16(f.value, val)
-	case reflect.Int32:
-		return setInt32(f.value, val)
-	case reflect.Int64:
-		return setInt64(f.value, val)
-	case reflect.Uint:
-		return setUint(f.value, val)
-	case reflect.Uint8:
-		return setUint8(f.value, val)
-	case reflect.Uint16:
-		return setUint16(f.value, val)
-	case reflect.Uint32:
-		return setUint32(f.value, val)
-	case reflect.Uint64:
-		return setUint64(f.value, val)
-	case reflect.Struct:
-		return setStruct(f.value, val)
-
-	case reflect.Slice:
-		tSlice := reflect.TypeOf(f.value.Interface()).Elem()
-		vals := strings.Split(val, f.sep)
-
-		switch tSlice.Kind() {
-		case reflect.String:
-			return setStringSlice(f.value, vals)
-		case reflect.Bool:
-			return setBoolSlice(f.value, vals)
-		case reflect.Float32:
-			return setFloat32Slice(f.value, vals)
-		case reflect.Float64:
-			return setFloat64Slice(f.value, vals)
-		case reflect.Int:
-			return setIntSlice(f.value, vals)
-		case reflect.Int8:
-			return setInt8Slice(f.value, vals)
-		case reflect.Int16:
-			return setInt16Slice(f.value, vals)
-		case reflect.Int32:
-			return setInt32Slice(f.value, vals)
-		case reflect.Int64:
-			return setInt64Slice(f.value, vals)
-		case reflect.Uint:
-			return setUintSlice(f.value, vals)
-		case reflect.Uint8:
-			return setUint8Slice(f.value, vals)
-		case reflect.Uint16:
-			return setUint16Slice(f.value, vals)
-		case reflect.Uint32:
-			return setUint32Slice(f.value, vals)
-		case reflect.Uint64:
-			return setUint64Slice(f.value, vals)
-		case reflect.Struct:
-			return setStructSlice(f.value, vals)
-		}
-	}
-
-	return false, fmt.Errorf("unsupported kind: %s", f.value.Kind())
 }
 
 func iterateOnFields(prefix string, vStruct reflect.Value, continueOnError bool, handle func(f fieldInfo) error) error {
@@ -288,7 +217,7 @@ func Populate(s interface{}, continueOnError bool) error {
 
 	return iterateOnFields("", v, continueOnError, func(f fieldInfo) error {
 		if val := getFlagValue(f.flag); val != "" {
-			if _, err := setFieldValue(f, val); err != nil {
+			if _, err := set.Value(f.value, f.sep, val); err != nil {
 				if continueOnError {
 					return nil
 				}
@@ -352,7 +281,7 @@ func RegisterFlags(fs *flag.FlagSet, s interface{}, continueOnError bool) error 
 			ptr := f.value.Addr().Interface().(*bool)
 			fs.BoolVar(ptr, f.flag, f.value.Bool(), usage)
 		default:
-			fv := &flagValue{f, continueOnError}
+			fv := &flagValue{continueOnError, f.value, f.sep}
 			fs.Var(fv, f.flag, usage)
 		}
 
