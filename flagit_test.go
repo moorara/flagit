@@ -174,12 +174,12 @@ func TestValidateStruct(t *testing.T) {
 		},
 		{
 			"NonPointer",
-			Flags{},
+			struct{}{},
 			errors.New("non-pointer type: you should pass a pointer to a struct type"),
 		},
 		{
 			"OK",
-			&Flags{},
+			new(struct{}),
 			nil,
 		},
 	}
@@ -255,69 +255,72 @@ func TestIsNestedStruct(t *testing.T) {
 }
 
 func TestIsTypeSupported(t *testing.T) {
-	f := Flags{}
+	u, _ := url.Parse("service-1")
+	r := regexp.MustCompilePOSIX("[:digit:]")
 
 	tests := []struct {
 		name     string
-		t        reflect.Type
+		field    interface{}
 		expected bool
 	}{
-		{"String", reflect.TypeOf(f.String), true},
-		{"Bool", reflect.TypeOf(f.Bool), true},
-		{"Float32", reflect.TypeOf(f.Float32), true},
-		{"Float64", reflect.TypeOf(f.Float64), true},
-		{"Int", reflect.TypeOf(f.Int), true},
-		{"Int8", reflect.TypeOf(f.Int8), true},
-		{"Int16", reflect.TypeOf(f.Int16), true},
-		{"Int32", reflect.TypeOf(f.Int32), true},
-		{"Int64", reflect.TypeOf(f.Int64), true},
-		{"Uint", reflect.TypeOf(f.Uint), true},
-		{"Uint8", reflect.TypeOf(f.Uint8), true},
-		{"Uint16", reflect.TypeOf(f.Uint16), true},
-		{"Uint32", reflect.TypeOf(f.Uint32), true},
-		{"Uint64", reflect.TypeOf(f.Uint64), true},
-		{"URL", reflect.TypeOf(f.URL), true},
-		{"Regexp", reflect.TypeOf(f.Regexp), true},
-		{"Duration", reflect.TypeOf(f.Duration), true},
-		{"StringPointer", reflect.TypeOf(f.StringPointer), true},
-		{"BoolPointer", reflect.TypeOf(f.BoolPointer), true},
-		{"Float32Pointer", reflect.TypeOf(f.Float32Pointer), true},
-		{"Float64Pointer", reflect.TypeOf(f.Float64Pointer), true},
-		{"IntPointer", reflect.TypeOf(f.IntPointer), true},
-		{"Int8Pointer", reflect.TypeOf(f.Int8Pointer), true},
-		{"Int16Pointer", reflect.TypeOf(f.Int16Pointer), true},
-		{"Int32Pointer", reflect.TypeOf(f.Int32Pointer), true},
-		{"Int64Pointer", reflect.TypeOf(f.Int64Pointer), true},
-		{"UintPointer", reflect.TypeOf(f.UintPointer), true},
-		{"Uint8Pointer", reflect.TypeOf(f.Uint8Pointer), true},
-		{"Uint16Pointer", reflect.TypeOf(f.Uint16Pointer), true},
-		{"Uint32Pointer", reflect.TypeOf(f.Uint32Pointer), true},
-		{"Uint64Pointer", reflect.TypeOf(f.Uint64Pointer), true},
-		{"URLPointer", reflect.TypeOf(f.URLPointer), true},
-		{"RegexpPointer", reflect.TypeOf(f.RegexpPointer), true},
-		{"DurationPointer", reflect.TypeOf(f.DurationPointer), true},
-		{"StringSlice", reflect.TypeOf(f.StringSlice), true},
-		{"BoolSlice", reflect.TypeOf(f.BoolSlice), true},
-		{"Float32Slice", reflect.TypeOf(f.Float32Slice), true},
-		{"Float64Slice", reflect.TypeOf(f.Float64Slice), true},
-		{"IntSlice", reflect.TypeOf(f.IntSlice), true},
-		{"Int8Slice", reflect.TypeOf(f.Int8Slice), true},
-		{"Int16Slice", reflect.TypeOf(f.Int16Slice), true},
-		{"Int32Slice", reflect.TypeOf(f.Int32Slice), true},
-		{"Int64Slice", reflect.TypeOf(f.Int64Slice), true},
-		{"UintSlice", reflect.TypeOf(f.UintSlice), true},
-		{"Uint8Slice", reflect.TypeOf(f.Uint8Slice), true},
-		{"Uint16Slice", reflect.TypeOf(f.Uint16Slice), true},
-		{"Uint32Slice", reflect.TypeOf(f.Uint32Slice), true},
-		{"Uint64Slice", reflect.TypeOf(f.Uint64Slice), true},
-		{"URLSlice", reflect.TypeOf(f.URLSlice), true},
-		{"RegexpSlice", reflect.TypeOf(f.RegexpSlice), true},
-		{"DurationSlice", reflect.TypeOf(f.DurationSlice), true},
+		{"String", "content", true},
+		{"Bool", true, true},
+		{"Float32", float32(3.1415), true},
+		{"Float64", float64(3.14159265359), true},
+		{"Int", int(-9223372036854775808), true},
+		{"Int8", int8(-128), true},
+		{"Int16", int16(-32768), true},
+		{"Int32", int32(-2147483648), true},
+		{"Int64", int64(-9223372036854775808), true},
+		{"Uint", uint(18446744073709551615), true},
+		{"Uint8", uint8(255), true},
+		{"Uint16", uint16(65535), true},
+		{"Uint32", uint32(4294967295), true},
+		{"Uint64", uint64(18446744073709551615), true},
+		{"URL", *u, true},
+		{"Regexp", *r, true},
+		{"Duration", time.Second, true},
+		{"StringPointer", ptr.String("content"), true},
+		{"BoolPointer", ptr.Bool(true), true},
+		{"Float32Pointer", ptr.Float32(3.1415), true},
+		{"Float64Pointer", ptr.Float64(3.14159265359), true},
+		{"IntPointer", ptr.Int(-9223372036854775808), true},
+		{"Int8Pointer", ptr.Int8(-128), true},
+		{"Int16Pointer", ptr.Int16(-32768), true},
+		{"Int32Pointer", ptr.Int32(-2147483648), true},
+		{"Int64Pointer", ptr.Int64(-9223372036854775808), true},
+		{"UintPointer", ptr.Uint(18446744073709551615), true},
+		{"Uint8Pointer", ptr.Uint8(255), true},
+		{"Uint16Pointer", ptr.Uint16(65535), true},
+		{"Uint32Pointer", ptr.Uint32(4294967295), true},
+		{"Uint64Pointer", ptr.Uint64(18446744073709551615), true},
+		{"URLPointer", u, true},
+		{"RegexpPointer", r, true},
+		{"DurationPointer", ptr.Duration(time.Second), true},
+		{"StringSlice", []string{"content"}, true},
+		{"BoolSlice", []bool{true}, true},
+		{"Float32Slice", []float32{3.1415}, true},
+		{"Float64Slice", []float64{3.14159265359}, true},
+		{"IntSlice", []int{-9223372036854775808}, true},
+		{"Int8Slice", []int8{-128}, true},
+		{"Int16Slice", []int16{-32768}, true},
+		{"Int32Slice", []int32{-2147483648}, true},
+		{"Int64Slice", []int64{-9223372036854775808}, true},
+		{"UintSlice", []uint{18446744073709551615}, true},
+		{"Uint8Slice", []uint8{255}, true},
+		{"Uint16Slice", []uint16{65535}, true},
+		{"Uint32Slice", []uint32{4294967295}, true},
+		{"Uint64Slice", []uint64{18446744073709551615}, true},
+		{"URLSlice", []url.URL{*u}, true},
+		{"RegexpSlice", []regexp.Regexp{*r}, true},
+		{"DurationSlice", []time.Duration{time.Second}, true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.expected, isTypeSupported(tc.t))
+			typ := reflect.TypeOf(tc.field)
+
+			assert.Equal(t, tc.expected, isTypeSupported(typ))
 		})
 	}
 }
