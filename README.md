@@ -79,7 +79,7 @@ Nested structs are also supported.
 
 
 [godoc-url]: https://pkg.go.dev/github.com/moorara/flagit
-[godoc-image]: https://godoc.org/github.com/moorara/flagit?status.svg
+[godoc-image]: https://pkg.go.dev/badge/github.com/moorara/flagit
 [workflow-url]: https://github.com/moorara/flagit/actions
 [workflow-image]: https://github.com/moorara/flagit/workflows/Main/badge.svg
 [goreport-url]: https://goreportcard.com/report/github.com/moorara/flagit
